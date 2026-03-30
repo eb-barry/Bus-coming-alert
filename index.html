@@ -3,45 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TDX 中繼連線測試</title>
+    <title>TDX 中繼連線終極測試</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 p-6 font-sans">
-    <div class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
-        <h2 class="text-2xl font-bold text-blue-600 mb-2 text-center">🚌 TDX 連線終極診斷</h2>
-        <p class="text-slate-400 text-xs text-center mb-8">透過 Google Proxy 繞過瀏覽器限制</p>
+<body class="bg-slate-100 p-6 font-sans">
+    <div class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-2xl">
+        <h2 class="text-2xl font-bold text-blue-600 mb-2 text-center">🏁 最終驗證測試</h2>
+        <p class="text-slate-400 text-xs text-center mb-6">v2.0 - Proxy Debug Mode</p>
 
-        <div class="space-y-5">
-            <div>
-                <label class="block text-xs font-bold text-slate-500 mb-2 ml-1">CLIENT ID</label>
-                <input type="text" id="id" placeholder="請貼上 barry.lin- 開頭的 ID" 
-                       class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-400 transition-all">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-500 mb-2 ml-1">CLIENT SECRET</label>
-                <input type="password" id="secret" placeholder="請貼上 TDX Secret" 
-                       class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-400 transition-all">
-            </div>
-            <button onclick="runFinalTest()" id="btn" 
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
-                確認連線狀態
+        <div class="space-y-4">
+            <input type="text" id="id" placeholder="Client ID (含 barry.lin-)" class="w-full p-4 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-400">
+            <input type="password" id="secret" placeholder="Client Secret" class="w-full p-4 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-400">
+            <button onclick="runTest()" id="btn" class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
+                立即測試連線
             </button>
         </div>
 
-        <div id="result" class="mt-8 hidden border-t border-slate-100 pt-6">
-            <p id="status" class="font-bold text-lg mb-3 text-center"></p>
-            <div class="bg-slate-900 rounded-2xl p-4 shadow-inner">
-                <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
-                    <span class="text-[10px] text-slate-500 font-mono uppercase tracking-widest">System Log</span>
-                    <span class="text-[10px] text-blue-400 font-mono">v1.2-proxy</span>
-                </div>
-                <pre id="log" class="text-green-400 text-[11px] font-mono overflow-auto max-h-64 whitespace-pre-wrap break-all leading-relaxed"></pre>
+        <div id="result" class="mt-8 hidden border-t pt-6">
+            <p id="status" class="font-bold text-center mb-4 text-lg"></p>
+            <div class="bg-slate-900 rounded-xl p-4 shadow-inner">
+                <div class="text-[10px] text-slate-500 mb-2 font-mono">SERVER RESPONSE:</div>
+                <pre id="log" class="text-green-400 text-[10px] font-mono overflow-auto max-h-60 whitespace-pre-wrap break-all"></pre>
             </div>
         </div>
     </div>
 
     <script>
-        async function runFinalTest() {
+        async function runTest() {
             const id = document.getElementById('id').value.trim();
             const secret = document.getElementById('secret').value.trim();
             const log = document.getElementById('log');
@@ -49,56 +37,52 @@
             const resultDiv = document.getElementById('result');
             const btn = document.getElementById('btn');
 
-            if(!id || !secret) return alert("請輸入完整金鑰資料");
+            if(!id || !secret) return alert("請填寫金鑰資料");
 
-            // UI 狀態重置
             btn.disabled = true;
-            btn.innerText = "⏳ 正在處理請求...";
             resultDiv.classList.remove('hidden');
-            status.innerText = "正在連線中...";
+            status.innerText = "⏳ 請求發送中...";
             status.className = "text-blue-500 font-bold text-center";
-            log.innerText = "> 初始化中繼請求...\n> 目標 URL: script.google.com/macros/s/.../exec";
+            log.innerText = "> 正在透過 Google 伺服器進行驗證...";
 
-            // 使用您提供的最新網址
+            // 使用您提供的最新 URL
             const webAppUrl = "https://script.google.com/macros/s/AKfycbwfMDYvhsm2vCZBZfz0xe8esA40h32u4lgvkNZyhrS4iTBpgEaFJDd-WC7C1WSr0Rt-/exec"; 
 
             try {
-                log.innerText += "\n> 正在將金鑰封裝為 JSON...";
-                
+                // 發送請求
                 const response = await fetch(webAppUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 避免觸發預檢請求
                     body: JSON.stringify({ id: id, secret: secret })
                 });
 
-                log.innerText += `\n> 中繼站回應狀態: ${response.status}`;
-
-                if (!response.ok) {
-                    throw new Error(`Google Apps Script 伺服器錯誤 (HTTP ${response.status})`);
+                // 先以文字形式讀取回應，防止 JSON 解析失敗導致資訊遺失
+                const responseText = await response.text();
+                
+                try {
+                    const data = JSON.parse(responseText);
+                    
+                    if (data.access_token) {
+                        status.innerText = "✅ 恭喜！連線成功";
+                        status.className = "text-green-600 font-bold text-center";
+                        log.innerText = "> Token 取得成功：\n\n" + data.access_token;
+                    } else {
+                        status.innerText = "❌ 驗證失敗";
+                        status.className = "text-orange-500 font-bold text-center";
+                        log.innerText = "> 伺服器拒絕金鑰，詳細資訊：\n" + JSON.stringify(data, null, 2);
+                    }
+                } catch (jsonErr) {
+                    // 如果不是 JSON，代表 Google 可能回傳了 404 或 500 錯誤網頁
+                    status.innerText = "🚫 格式錯誤 (非 JSON)";
+                    status.className = "text-red-600 font-bold text-center";
+                    log.innerText = "> Google 回傳了非預期的內容 (可能是錯誤網頁)：\n\n" + responseText;
                 }
 
-                const data = await response.json();
-
-                if (data.access_token) {
-                    status.innerText = "✅ 連線成功！";
-                    status.className = "text-green-600 font-bold text-center text-lg";
-                    log.innerText += "\n\n[SUCCESS] 成功從 TDX 獲取權杖：\n" + data.access_token;
-                } else if (data.error) {
-                    status.innerText = "❌ 驗證失敗";
-                    status.className = "text-orange-500 font-bold text-center";
-                    log.innerText += "\n\n[TDX ERROR] " + JSON.stringify(data, null, 2);
-                } else {
-                    status.innerText = "❓ 格式異常";
-                    log.innerText += "\n\n[WARNING] 收到非預期回應格式：\n" + JSON.stringify(data, null, 2);
-                }
             } catch (err) {
-                status.innerText = "🚫 連線遭攔截";
+                status.innerText = "🚫 網路連線錯誤";
                 status.className = "text-red-600 font-bold text-center";
-                log.innerText += "\n\n[CRITICAL ERROR]\n" + err.message;
-                log.innerText += "\n\n這通常代表：\n1. 您的 Google Script 部署時「誰有權存取」未設為「任何人」。\n2. 腳本程式碼中 doPost(e) 的邏輯有誤。";
+                log.innerText = "> 無法連接到中繼站：\n" + err.message;
             } finally {
                 btn.disabled = false;
-                btn.innerText = "再次執行測試";
             }
         }
     </script>
