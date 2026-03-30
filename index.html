@@ -3,78 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TDX 連線測試</title>
+    <title>TDX 連線測試 (中繼站版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body style="font-family: -apple-system, sans-serif; padding: 20px; line-height: 1.6;">
-    <h2 style="color: #2563eb;">🧪 TDX 連線診斷工具</h2>
-    <p style="font-size: 14px; color: #666;">請輸入您在 TDX 官網複製的完整金鑰：</p>
+<body class="bg-slate-50 p-6 font-sans">
+    <div class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-lg">
+        <h2 class="text-2xl font-bold text-blue-600 mb-2">🚀 TDX 中繼測試</h2>
+        <p class="text-slate-500 text-sm mb-6">透過 Google Proxy 解決 Load Failed 問題</p>
 
-    <div style="margin-bottom: 15px;">
-        <label style="display:block; font-size: 12px; margin-bottom: 5px;">Client ID (需含 barry.lin-)</label>
-        <input type="text" id="testId" style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px;" placeholder="貼上完整 ID">
-    </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-1">Client ID (需含 barry.lin-)</label>
+                <input type="text" id="clientId" placeholder="請貼上完整 ID" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:border-blue-400 transition-all">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-slate-400 mb-1">Client Secret</label>
+                <input type="password" id="clientSecret" placeholder="請貼上 Secret" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:border-blue-400 transition-all">
+            </div>
+            
+            <button onclick="runTest()" id="btn" class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-transform">
+                開始測試
+            </button>
+        </div>
 
-    <div style="margin-bottom: 20px;">
-        <label style="display:block; font-size: 12px; margin-bottom: 5px;">Client Secret</label>
-        <input type="password" id="testSecret" style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px;" placeholder="貼上完整 Secret">
-    </div>
-
-    <button id="runTest" style="width: 100%; padding: 15px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
-        開始發送測試請求
-    </button>
-
-    <div id="resultBox" style="margin-top: 20px; display: none;">
-        <hr>
-        <h3 id="statusTitle">診斷結果</h3>
-        <div id="statusDesc" style="font-size: 14px; margin-bottom: 10px;"></div>
-        <pre id="rawResponse" style="background: #f4f4f4; padding: 15px; border-radius: 8px; font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #333;"></pre>
+        <div id="result" class="mt-8 hidden border-t pt-6">
+            <div id="status" class="font-bold text-lg mb-2"></div>
+            <pre id="log" class="bg-slate-900 text-green-400 p-4 rounded-xl text-xs overflow-auto max-h-60 whitespace-pre-wrap break-all font-mono"></pre>
+        </div>
     </div>
 
     <script>
-        document.getElementById('runTest').onclick = async () => {
-            const id = document.getElementById('testId').value.trim();
-            const secret = document.getElementById('testSecret').value.trim();
-            const resultBox = document.getElementById('resultBox');
-            const statusTitle = document.getElementById('statusTitle');
-            const statusDesc = document.getElementById('statusDesc');
-            const rawResponse = document.getElementById('rawResponse');
+        async function runTest() {
+            const id = document.getElementById('clientId').value.trim();
+            const secret = document.getElementById('clientSecret').value.trim();
+            const btn = document.getElementById('btn');
+            const resultDiv = document.getElementById('result');
+            const status = document.getElementById('status');
+            const log = document.getElementById('log');
 
-            if (!id || !secret) return alert("請輸入完整金鑰");
+            if(!id || !secret) return alert("請填寫金鑰資料");
 
-            resultBox.style.display = 'block';
-            statusTitle.innerText = "⏳ 正在連線中...";
-            statusDesc.innerText = "正在嘗試與 TDX 伺服器建立握手協定...";
-            rawResponse.innerText = "";
+            // UI 狀態更新
+            btn.disabled = true;
+            btn.innerText = "⏳ 請求發送中...";
+            resultDiv.classList.remove('hidden');
+            status.innerText = "正在透過 Google 中繼站連線...";
+            status.className = "text-blue-500 font-bold";
+            log.innerText = "正在嘗試與您的 Google Script 建立連線...";
+
+            // 您提供的 Google Script URL
+            const proxyUrl = "https://script.google.com/macros/s/AKfycbwfMDYvhsm2vCZBZfz0xe8esA40h32u4lgvkNZyhrS4iTBpgEaFJDd-WC7C1WSr0Rt-/exec"; 
 
             try {
-                // iPhone Safari 最相容的 fetch 寫法
-                const response = await fetch("https://tdx.transportdata.tw/auth/realms/TDX/protocol/openid-connect/token", {
+                // 使用 POST 方式將金鑰送往中繼站
+                const response = await fetch(proxyUrl, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(secret)}`,
-                    cache: 'no-store'
+                    mode: 'cors', // 啟用跨網域模式
+                    headers: {
+                        'Content-Type': 'text/plain;charset=utf-8' // 針對 Google Apps Script 優化的標頭
+                    },
+                    body: JSON.stringify({ id: id, secret: secret })
                 });
+
+                if (!response.ok) throw new Error("Google 中繼站回應異常 (HTTP " + response.status + ")");
 
                 const data = await response.json();
 
-                if (response.ok) {
-                    statusTitle.innerText = "✅ 連線成功！";
-                    statusTitle.style.color = "green";
-                    statusDesc.innerText = "您的金鑰正確，且 iPhone 網路連線正常。";
-                    rawResponse.innerText = "Access Token 取得成功：\n" + data.access_token;
+                if (data.access_token) {
+                    status.innerText = "✅ 連線成功！";
+                    status.className = "text-green-600 font-bold";
+                    log.innerText = "成功換取 Token：\n\n" + data.access_token;
+                } else if (data.error) {
+                    status.innerText = "❌ 驗證失敗";
+                    status.className = "text-orange-500 font-bold";
+                    log.innerText = "TDX 伺服器拒絕了請求：\n\n" + JSON.stringify(data, null, 2);
                 } else {
-                    statusTitle.innerText = "❌ 驗證失敗";
-                    statusTitle.style.color = "orange";
-                    statusDesc.innerText = "TDX 伺服器有回應，但拒絕了您的金鑰。";
-                    rawResponse.innerText = JSON.stringify(data, null, 2);
+                    throw new Error("回傳格式不正確");
                 }
             } catch (err) {
-                statusTitle.innerText = "🚫 網路阻斷 (Load Failed)";
-                statusTitle.style.color = "red";
-                statusDesc.innerText = "請求尚未到達伺服器就被 iPhone 系統攔截了。";
-                rawResponse.innerText = `錯誤類型: ${err.name}\n詳細內容: ${err.message}\n\n這通常是 Safari 的安全限制或網路節點封鎖。`;
+                status.innerText = "🚫 連線攔截 (錯誤碼: 0)";
+                status.className = "text-red-600 font-bold";
+                log.innerText = "失敗原因：\n" + err.message + "\n\n常見解決方案：\n1. 請確認 Google Script 部署時「誰有權存取」設為「任何人」。\n2. 檢查您的 Client ID 是否包含前綴。";
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "再次測試";
             }
-        };
+        }
     </script>
 </body>
 </html>
