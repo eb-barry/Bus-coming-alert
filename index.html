@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>雙北公車語音助手 - 完整測試版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
+        .status-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans antialiased text-slate-900">
+
+    <div class="max-w-md mx-auto min-h-screen flex flex-col p-4">
+        
+        <header class="py-6 text-center">
+            <h1 class="text-3xl font-extrabold text-blue-600 tracking-tight">🚌 Bus Speaker</h1>
+            <p class="text-slate-500 text-sm mt-1">雙北公車即時語音監測系統</p>
+        </header>
+
+        <div id="setupPanel" class="bg-white rounded-3xl shadow-xl p-6 mb-6 hidden animate-in">
+            <h2 class="text-lg font-bold mb-4 flex items-center">🔑 TDX API 設定</h2>
+            <div class="space-y-3">
+                <input type="text" id="clientId" placeholder="輸入 Client ID" class="w-full px-4 py-3 bg-slate-100 border-none rounded-2xl focus:ring-2 focus:ring-blue-500">
+                <input type="password" id="clientSecret" placeholder="輸入 Client Secret" class="w-full px-4 py-3 bg-slate-100 border-none rounded-2xl focus:ring-2 focus:ring-blue-500">
+                <button onclick="saveKeys()" class="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-100">
+                    儲存金鑰並啟動
+                </button>
+                <p class="text-[10px] text-center text-slate-400">金鑰將安全地儲存於您的瀏覽器 LocalStorage 中</p>
+            </div>
+        </div>
+
+        <main id="mainPanel" class="space-y-4 hidden animate-in">
+            
+            <section class="bg-white rounded-3xl shadow-sm p-5 border border-slate-100">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Step 1: 輸入公車路線</label>
+                <div class="flex gap-2">
+                    <input type="text" id="routeInput" placeholder="例如: 647, 綠1, 307" class="flex-1 px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 font-bold text-lg">
+                    <button onclick="searchRoute()" id="searchBtn" class="bg-blue-600 text-white px-6 rounded-xl font-bold hover:bg-blue-700 transition">搜尋</button>
+                </div>
+            </section>
+
+            <section id="directionSection" class="bg-white rounded-3xl shadow-sm p-5 border border-slate-100 hidden animate-in">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Step 2: 選擇行駛方向</label>
+                <select id="directionSelect" onchange="loadStops()" class="w-full px-4 py-3 bg-blue-50 border-none rounded-xl focus:ring-2 focus:ring-blue-500 font-medium text-blue-800">
+                    </select>
+            </section>
+
+            <section id="stopSection" class="bg-white rounded-3xl shadow-sm p-5 border border-slate-100 hidden animate-in">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Step 3: 選擇您的候車站牌</label>
+                <select id="stopSelect" class="w-full px-4 py-3 bg-orange-50 border-none rounded-xl focus:ring-2 focus:ring-orange-500 font-medium text-orange-800">
+                    <option>請選擇站牌...</option>
+                </select>
+            </section>
+
+            <button onclick="toggleTracking()" id="trackBtn" class="w-full py-5 rounded-3xl font-black text-xl shadow-xl transition-all duration-300 transform active:scale-95 bg-slate-200 text-slate-400 cursor-not-allowed">
+                請先完成設定
+            </button>
+
+            <div id="statusBoard" class="hidden bg-slate-900 rounded-3xl p-6 text-white shadow-2xl animate-in">
+                <div class="flex justify-between items-center mb-4">
+                    <span class="flex items-center gap-2 text-xs font-bold text-green-400 uppercase tracking-widest">
+                        <span class="block w-2 h-2 bg-green-400 rounded-full status-pulse"></span>
+                        Live Monitoring
+                    </span>
+                    <button onclick="clearKeys()" class="text-[10px] text-slate-500 hover:text-red-400 underline">重設金鑰</button>
+                </div>
+                <div id="etaValue" class="text-5xl font-black text-center my-4 tracking-tighter">--</div>
+                <div id="etaInfo" class="text-slate-400 text-center text-xs font-medium">等待資料更新中...</div>
+            </div>
+
+        </main>
+
+        <footer class="mt-auto py-6 text-center text-slate-400 text-[10px]">
+            Data Source: MOTC TDX Platform | Made for iPhone Safari
+        </footer>
+    </div>
+
+    <script>
+        let apiToken = "";
+        let isTracking = false;
+        let monitorInterval = null;
+        let selectedCity = "Taipei"; // 預設搜尋台北市
+
+        // 頁面初始化
+        window.onload = () => {
+            const savedId = localStorage.getItem('tdx_id');
+            const savedSecret = localStorage.getItem('tdx_secret');
+            if (savedId && savedSecret) {
+                document.getElementById('mainPanel').classList.remove('hidden');
+            } else {
+                document.getElementById('setupPanel').classList.remove('hidden');
+            }
+        };
+
+        // 儲存金鑰
+        function saveKeys() {
+            const id = document.getElementById('clientId').value.trim();
+            const sec = document.getElementById('clientSecret').value.trim();
+            if (!id || !sec) return alert("請完整填寫 Client ID 與 Secret");
+            localStorage.setItem('tdx_id', id);
+            localStorage.setItem('tdx_secret', sec);
+            location.reload();
+        }
+
+        // 清除金鑰
+        function clearKeys() {
+            if(confirm("確定要重設所有設定嗎？")) {
+                localStorage.clear();
+                location.reload();
+            }
+        }
+
+        // 取得 TDX Access Token
+        async function getAccessToken() {
+            const id = localStorage.getItem('tdx_id');
+            const secret = localStorage.getItem('tdx_secret');
+            try {
+                const res = await fetch("https://tdx.transportdata.tw/auth/realms/TDX/protocol/openid-connect/token", {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        grant_type: 'client_credentials',
+                        client_id: id,
+                        client_secret: secret
+                    })
+                });
+                const data = await res.json();
+                console.log("Token 取得成功");
+                return data.access_token;
+            } catch (e) {
+                alert("驗證失敗，請檢查金鑰是否正確");
+                clearKeys();
+            }
+        }
+
+        // 統一 Fetch API
+        async function fetchTDX(url) {
+            if (!apiToken) apiToken = await getAccessToken();
+            let res = await fetch(url, { headers: { 'Authorization': `Bearer ${apiToken}` } });
+            if (res.status === 401) {
+                apiToken = await getAccessToken();
+                res = await fetch(url, { headers: { 'Authorization': `Bearer ${apiToken}` } });
+            }
+            return res.json();
+        }
+
+        // 搜尋路線與方向
+        async function searchRoute() {
+            const routeName = document.getElementById('routeInput').value.trim();
+            if (!routeName) return;
+
+            const btn = document.getElementById('searchBtn');
+            btn.innerText = "⏳";
+            btn.disabled = true;
+
+            try {
+                // 優先搜尋台北市
+                let data = await fetchTDX(`https://tdx.transportdata.tw/api/basic/v2/Bus/Route/City/Taipei/${routeName}?$format=JSON`);
+                selectedCity = "Taipei";
+                
+                if (data.length === 0) {
+                    data = await fetchTDX(`https://tdx.transportdata.tw/api/basic/v2/Bus/Route/City/NewTaipei/${routeName}?$format=JSON`);
+                    selectedCity = "NewTaipei";
+                }
+
+                if (data.length === 0) throw "NotFound";
+
+                const route = data[0];
+                const dirSelect = document.getElementById('directionSelect');
+                dirSelect.innerHTML = `
+                    <option value="">請選擇方向</option>
+                    <option value="0">去程 (往 ${route.DestinationStopNameZh})</option>
+                    <option value="1">回程 (往 ${route.DepartureStopNameZh})</option>
+                `;
+
+                document.getElementById('directionSection').classList.remove('hidden');
+                btn.innerText = "搜尋";
+                btn.disabled = false;
+            } catch (e) {
+                alert("找不到路線，請嘗試完整名稱（如: 藍2）");
+                btn.innerText = "搜尋";
+                btn.disabled = false;
+            }
+        }
+
+        // 載入該方向站牌
+        async function loadStops() {
+            const routeName = document.getElementById('routeInput').value.trim();
+            const direction = document.getElementById('directionSelect').value;
+            if (!direction) return;
+
+            const stopSelect = document.getElementById('stopSelect');
+            stopSelect.innerHTML = '<option>站牌讀取中...</option>';
+            document.getElementById('stopSection').classList.remove('hidden');
+
+            const data = await fetchTDX(`https://tdx.transportdata.tw/api/basic/v2/Bus/StopOfRoute/City/${selectedCity}/${routeName}?$filter=Direction eq '${direction}'&$format=JSON`);
+            
+            if (data.length > 0) {
+                stopSelect.innerHTML = '<option value="">請選擇搭車站牌</option>';
+                data[0].Stops.forEach(s => {
+                    const opt = document.createElement('option');
+                    opt.value = s.StopID;
+                    opt.textContent = s.StopName.Zh_tw;
+                    stopSelect.appendChild(opt);
+                });
+                
+                const trackBtn = document.getElementById('trackBtn');
+                trackBtn.className = "w-full bg-blue-600 text-white py-5 rounded-3xl font-black text-xl shadow-xl shadow-blue-200 transition-all active:scale-95 cursor-pointer";
+                trackBtn.innerText = "開始語音監控";
+            }
+        }
+
+        // 開關監控
+        function toggleTracking() {
+            if (isTracking) {
+                stopTracking();
+            } else {
+                startTracking();
+            }
+        }
+
+        function startTracking() {
+            const stopID = document.getElementById('stopSelect').value;
+            if (!stopID) return alert("請先選定站牌");
+
+            isTracking = true;
+            document.getElementById('trackBtn').innerText = "停止監控";
+            document.getElementById('trackBtn').classList.replace('bg-blue-600', 'bg-red-500');
+            document.getElementById('statusBoard').classList.remove('hidden');
+            
+            speak("監控已啟動，每十秒更新一次。");
+            
+            runDetection();
+            monitorInterval = setInterval(runDetection, 10000);
+        }
+
+        function stopTracking() {
+            isTracking = false;
+            clearInterval(monitorInterval);
+            document.getElementById('trackBtn').innerText = "開始語音監控";
+            document.getElementById('trackBtn').classList.replace('bg-red-500', 'bg-blue-600');
+            document.getElementById('statusBoard').classList.add('hidden');
+        }
+
+        // 核心偵測函數
+        async function runDetection() {
+            const routeName = document.getElementById('routeInput').value;
+            const direction = document.getElementById('directionSelect').value;
+            const stopID = document.getElementById('stopSelect').value;
+            const stopName = document.getElementById('stopSelect').options[document.getElementById('stopSelect').selectedIndex].text;
+
+            console.log(`偵測中: ${routeName} at ${stopName}`);
+
+            try {
+                const data = await fetchTDX(`https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/${selectedCity}/${routeName}?$filter=StopID eq '${stopID}' and Direction eq '${direction}'&$format=JSON`);
+                
+                if (data && data.length > 0) {
+                    const info = data[0];
+                    let displayMsg = "";
+                    
+                    // StopStatus: 0:正常, 1:尚未發車, 2:交管不停, 3:末班已過, 4:今日未營運
+                    if (info.StopStatus === 0) {
+                        const seconds = info.EstimateTime;
+                        const minutes = Math.floor(seconds / 60);
+                        
+                        if (seconds <= 60) {
+                            displayMsg = "公車進站中";
+                        } else {
+                            displayMsg = `${minutes} 分鐘`;
+                        }
+
+                        // 判斷是否為「約5站距離」 (假設一站約1.5~2分鐘，10分鐘內視為靠近)
+                        if (minutes <= 10 && minutes > 0) {
+                            speak(`${routeName} 公車，預計 ${minutes} 分鐘後抵達 ${stopName}，請準備。`);
+                        }
+                    } else {
+                        const statusMap = { 1: "尚未發車", 2: "不停靠", 3: "末班已過", 4: "未營運" };
+                        displayMsg = statusMap[info.StopStatus] || "無資料";
+                    }
+
+                    document.getElementById('etaValue').innerText = displayMsg;
+                    document.getElementById('etaInfo').innerText = `${routeName} 往 ${document.getElementById('directionSelect').options[document.getElementById('directionSelect').selectedIndex].text.split('往')[1]}`;
+                }
+            } catch (e) {
+                console.error("更新失敗", e);
+            }
+        }
+
+        // 語音播報
+        function speak(text) {
+            if (window.speechSynthesis.speaking) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'zh-TW';
+            utterance.rate = 0.9; // 稍微慢一點比較清楚
+            window.speechSynthesis.speak(utterance);
+        }
+    </script>
+</body>
+</html>
