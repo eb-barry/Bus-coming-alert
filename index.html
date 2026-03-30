@@ -6,7 +6,7 @@
     <title>雙北公車語音助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* 避免 iPhone Safari 點擊縮放 */
+        /* 確保 iPhone Safari 輸入框不縮放 */
         input, select, button { font-size: 16px !important; }
         .loading-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -26,14 +26,14 @@
             </div>
             <div class="space-y-3">
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">Client ID (需含 barry.lin-)</label>
-                    <input type="password" id="clientId" placeholder="請點擊 TDX 官網複製按鈕貼入" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <label class="block text-xs text-slate-400 mb-1">Client ID (需含完整前綴)</label>
+                    <input type="password" id="clientId" placeholder="貼上含 barry.lin- 的 ID" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg">
                 </div>
                 <div>
-                    <label class="block text-xs text-slate-400 mb-1">Client Secret</label>
-                    <input type="password" id="clientSecret" placeholder="請貼入完整密鑰字串" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <label class="block text-xs text-slate-4:00 mb-1">Client Secret</label>
+                    <input type="password" id="clientSecret" placeholder="貼上完整 Secret 字串" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg">
                 </div>
-                <button onclick="saveKeys()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg active:scale-95 transition-transform">儲存並進入系統</button>
+                <button onclick="saveKeys()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg active:scale-95 transition-transform">儲存並開始</button>
             </div>
         </div>
 
@@ -41,21 +41,19 @@
             <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                 <p class="text-sm font-bold text-slate-400 mb-3">STEP 1: 輸入公車路線</p>
                 <div class="flex gap-2">
-                    <input type="text" id="routeInput" inputmode="search" placeholder="例如: 647, 綠1" class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                    <input type="text" id="routeInput" inputmode="search" placeholder="例如: 647, 綠1" class="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none">
                     <button onclick="searchRoute()" id="searchBtn" class="bg-blue-600 text-white px-6 rounded-lg font-bold">搜尋</button>
                 </div>
             </div>
 
-            <div id="directionSection" class="hidden bg-white p-6 rounded-2xl shadow-xl border border-slate-100 animate-fade-in">
+            <div id="directionSection" class="hidden bg-white p-6 rounded-2xl shadow-xl border border-slate-100">
                 <p class="text-sm font-bold text-slate-400 mb-3">STEP 2: 選擇行駛方向</p>
-                <select id="directionSelect" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg appearance-none"></select>
+                <select id="directionSelect" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg"></select>
             </div>
         </div>
     </div>
 
     <script>
-        let accessToken = null;
-
         // 頁面載入檢查
         window.onload = () => {
             if (localStorage.getItem('tdx_id')) {
@@ -74,13 +72,13 @@
         }
 
         function clearKeys() {
-            if(confirm("確定要清除金鑰紀錄嗎？")) {
+            if(confirm("確定要清除紀錄嗎？")) {
                 localStorage.clear();
                 location.reload();
             }
         }
 
-        // 取得 Token (強化相容性)
+        // 取得 Token：加入 cache: 'no-store' 避開 iPhone Safari 緩存錯誤
         async function getAccessToken() {
             const id = localStorage.getItem('tdx_id');
             const secret = localStorage.getItem('tdx_secret');
@@ -93,65 +91,59 @@
                         grant_type: 'client_credentials',
                         client_id: id,
                         client_secret: secret
-                    })
+                    }),
+                    cache: 'no-store'
                 });
 
-                if (!res.ok) {
-                    const errorMsg = await res.json();
-                    throw new Error(errorMsg.error_description || "驗證失敗");
-                }
-
+                if (!res.ok) throw new Error("驗證失敗，請檢查金鑰。");
                 const data = await res.json();
                 return data.access_token;
             } catch (e) {
-                alert("TDX 驗證錯誤：\n" + e.message + "\n\n提示：請確認 Client ID 是否包含完整前綴。");
+                alert("網路連線錯誤 (Load failed)：\n" + e.message);
                 return null;
             }
         }
 
-        // 搜尋路線 (支援雙北自動切換)
+        // 搜尋路線：自動輪詢台北與新北 API
         async function searchRoute() {
             const routeName = document.getElementById('routeInput').value.trim();
             if (!routeName) return;
 
             const btn = document.getElementById('searchBtn');
-            btn.innerHTML = '<span class="inline-block loading-spin">⌛</span>';
             btn.disabled = true;
+            btn.innerText = "⏳";
 
-            accessToken = await getAccessToken();
-            if (!accessToken) {
-                btn.innerText = "搜尋";
+            const token = await getAccessToken();
+            if (!token) {
                 btn.disabled = false;
+                btn.innerText = "搜尋";
                 return;
             }
 
-            // 同時檢查台北市與新北市 API
             const cities = ["Taipei", "NewTaipei"];
             let foundData = null;
 
             for (const city of cities) {
                 try {
                     const res = await fetch(`https://tdx.transportdata.tw/api/basic/v2/Bus/Route/City/${city}/${routeName}?$format=JSON`, {
-                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                        headers: { 'Authorization': `Bearer ${token}` }
                     });
                     const data = await res.json();
                     if (data && data.length > 0) {
-                        // 精確比對路線名稱
-                        foundData = data.find(r => r.RouteName.Zh_tw === routeName) || data[0];
+                        foundData = data[0];
                         break;
                     }
-                } catch (e) { console.error(`搜尋 ${city} 失敗:`, e); }
+                } catch (e) { console.error(city + " 搜尋失敗"); }
             }
 
-            btn.innerText = "搜尋";
             btn.disabled = false;
+            btn.innerText = "搜尋";
 
             if (!foundData) {
-                alert("找不到路線「" + routeName + "」\n請確認名稱是否正確（如：綠1、647）。");
+                alert("找不到路線，請嘗試完整名稱 (如：647)");
                 return;
             }
 
-            // 更新選單
             const dirSelect = document.getElementById('directionSelect');
             dirSelect.innerHTML = `
                 <option value="">選擇方向...</option>
