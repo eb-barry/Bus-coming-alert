@@ -3,102 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TDX 官方規範連線測試</title>
+    <title>TDX 中繼連線測試</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 p-4 font-sans">
-    <div class="max-w-md mx-auto bg-white p-6 rounded-2xl shadow-xl">
-        <h2 class="text-2xl font-bold text-blue-700 mb-4 flex items-center">
-            🧪 TDX 標準驗證測試
-        </h2>
-        
-        <div class="space-y-4">
+<body class="bg-slate-50 p-6 font-sans">
+    <div class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-xl border border-slate-100">
+        <h2 class="text-2xl font-bold text-blue-600 mb-2 text-center">🚌 TDX 連線終極診斷</h2>
+        <p class="text-slate-400 text-xs text-center mb-8">透過 Google Proxy 繞過瀏覽器限制</p>
+
+        <div class="space-y-5">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Client ID</label>
-                <input type="text" id="clientId" placeholder="例如: barry.lin-xxxx..." 
-                       class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <label class="block text-xs font-bold text-slate-500 mb-2 ml-1">CLIENT ID</label>
+                <input type="text" id="id" placeholder="請貼上 barry.lin- 開頭的 ID" 
+                       class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-400 transition-all">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Client Secret</label>
-                <input type="password" id="clientSecret" placeholder="請貼上 Secret" 
-                       class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                <label class="block text-xs font-bold text-slate-500 mb-2 ml-1">CLIENT SECRET</label>
+                <input type="password" id="secret" placeholder="請貼上 TDX Secret" 
+                       class="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-2 focus:ring-blue-400 transition-all">
             </div>
-            
-            <button onclick="runOfficialTest()" id="testBtn" 
-                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-lg active:scale-95 transition-all">
-                執行官方標準請求
+            <button onclick="runFinalTest()" id="btn" 
+                    class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
+                確認連線狀態
             </button>
         </div>
 
-        <div id="resultBox" class="mt-8 hidden border-t pt-6">
-            <div id="statusLabel" class="text-lg font-bold mb-2"></div>
-            <div class="bg-gray-900 rounded-xl p-4 overflow-hidden">
-                <div class="flex justify-between items-center mb-2">
-                    <span class="text-xs text-gray-500 font-mono">DEBUG CONSOLE</span>
-                    <span id="httpStatus" class="text-xs font-mono"></span>
+        <div id="result" class="mt-8 hidden border-t border-slate-100 pt-6">
+            <p id="status" class="font-bold text-lg mb-3 text-center"></p>
+            <div class="bg-slate-900 rounded-2xl p-4 shadow-inner">
+                <div class="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                    <span class="text-[10px] text-slate-500 font-mono uppercase tracking-widest">System Log</span>
+                    <span class="text-[10px] text-blue-400 font-mono">v1.2-proxy</span>
                 </div>
-                <pre id="debugLog" class="text-green-400 text-xs font-mono overflow-auto max-h-64 whitespace-pre-wrap break-all leading-relaxed"></pre>
+                <pre id="log" class="text-green-400 text-[11px] font-mono overflow-auto max-h-64 whitespace-pre-wrap break-all leading-relaxed"></pre>
             </div>
         </div>
     </div>
 
     <script>
-        async function runOfficialTest() {
-            const id = document.getElementById('clientId').value.trim();
-            const secret = document.getElementById('clientSecret').value.trim();
-            const btn = document.getElementById('testBtn');
-            const resultBox = document.getElementById('resultBox');
-            const statusLabel = document.getElementById('statusLabel');
-            const debugLog = document.getElementById('debugLog');
-            const httpStatus = document.getElementById('httpStatus');
+        async function runFinalTest() {
+            const id = document.getElementById('id').value.trim();
+            const secret = document.getElementById('secret').value.trim();
+            const log = document.getElementById('log');
+            const status = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            const btn = document.getElementById('btn');
 
-            if (!id || !secret) return alert("請完整填入 Client ID 與 Secret");
+            if(!id || !secret) return alert("請輸入完整金鑰資料");
 
-            // 初始化 UI
+            // UI 狀態重置
             btn.disabled = true;
-            btn.innerText = "⏳ 正在發送請求...";
-            resultBox.classList.remove('hidden');
-            debugLog.innerText = "> 初始化請求參數...\n> 目標網址: tdx.transportdata.tw";
-            statusLabel.innerText = "連線中...";
-            statusLabel.className = "text-blue-600 font-bold";
+            btn.innerText = "⏳ 正在處理請求...";
+            resultDiv.classList.remove('hidden');
+            status.innerText = "正在連線中...";
+            status.className = "text-blue-500 font-bold text-center";
+            log.innerText = "> 初始化中繼請求...\n> 目標 URL: script.google.com/macros/s/.../exec";
+
+            // 使用您提供的最新網址
+            const webAppUrl = "https://script.google.com/macros/s/AKfycbwfMDYvhsm2vCZBZfz0xe8esA40h32u4lgvkNZyhrS4iTBpgEaFJDd-WC7C1WSr0Rt-/exec"; 
 
             try {
-                // 依照 TDX 官方規範建構 Body (x-www-form-urlencoded)
-                const params = new URLSearchParams();
-                params.append('grant_type', 'client_credentials');
-                params.append('client_id', id);
-                params.append('client_secret', secret);
-
-                debugLog.innerText += "\n> 發送 POST 請求 (Content-Type: application/x-www-form-urlencoded)";
-
-                const response = await fetch("https://tdx.transportdata.tw/auth/realms/TDX/protocol/openid-connect/token", {
+                log.innerText += "\n> 正在將金鑰封裝為 JSON...";
+                
+                const response = await fetch(webAppUrl, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: params
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 避免觸發預檢請求
+                    body: JSON.stringify({ id: id, secret: secret })
                 });
 
-                httpStatus.innerText = `HTTP ${response.status}`;
-                httpStatus.className = response.ok ? "text-green-500" : "text-red-500";
+                log.innerText += `\n> 中繼站回應狀態: ${response.status}`;
+
+                if (!response.ok) {
+                    throw new Error(`Google Apps Script 伺服器錯誤 (HTTP ${response.status})`);
+                }
 
                 const data = await response.json();
 
-                if (response.ok) {
-                    statusLabel.innerText = "✅ 驗證成功！";
-                    statusLabel.className = "text-green-600 font-bold text-lg";
-                    debugLog.innerText += "\n\n[SUCCESS] 成功取得 Access Token:\n" + data.access_token;
+                if (data.access_token) {
+                    status.innerText = "✅ 連線成功！";
+                    status.className = "text-green-600 font-bold text-center text-lg";
+                    log.innerText += "\n\n[SUCCESS] 成功從 TDX 獲取權杖：\n" + data.access_token;
+                } else if (data.error) {
+                    status.innerText = "❌ 驗證失敗";
+                    status.className = "text-orange-500 font-bold text-center";
+                    log.innerText += "\n\n[TDX ERROR] " + JSON.stringify(data, null, 2);
                 } else {
-                    statusLabel.innerText = "❌ 驗證失敗";
-                    statusLabel.className = "text-orange-600 font-bold text-lg";
-                    debugLog.innerText += "\n\n[ERROR] 伺服器回傳錯誤:\n" + JSON.stringify(data, null, 2);
+                    status.innerText = "❓ 格式異常";
+                    log.innerText += "\n\n[WARNING] 收到非預期回應格式：\n" + JSON.stringify(data, null, 2);
                 }
-
             } catch (err) {
-                statusLabel.innerText = "🚫 連線遭攔截 (Load Failed)";
-                statusLabel.className = "text-red-600 font-bold text-lg";
-                debugLog.innerText += `\n\n[CRITICAL] 請求未到達伺服器：\n${err.name}: ${err.message}`;
-                debugLog.innerText += "\n\n這通常是瀏覽器的跨網域 (CORS) 限制導致。";
+                status.innerText = "🚫 連線遭攔截";
+                status.className = "text-red-600 font-bold text-center";
+                log.innerText += "\n\n[CRITICAL ERROR]\n" + err.message;
+                log.innerText += "\n\n這通常代表：\n1. 您的 Google Script 部署時「誰有權存取」未設為「任何人」。\n2. 腳本程式碼中 doPost(e) 的邏輯有誤。";
             } finally {
                 btn.disabled = false;
                 btn.innerText = "再次執行測試";
