@@ -2,142 +2,79 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>雙北公車語音助手</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        input, select, button { font-size: 16px !important; }
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TDX 連線測試</title>
 </head>
-<body class="bg-slate-50 font-sans p-4">
-    <div class="max-w-md mx-auto space-y-4">
-        <header class="text-center py-4">
-            <h1 class="text-3xl font-black text-blue-600">🚌 Bus Speaker</h1>
-            <p class="text-slate-400 text-xs mt-1">v3.0 iPhone Safari 專用版</p>
-        </header>
+<body style="font-family: -apple-system, sans-serif; padding: 20px; line-height: 1.6;">
+    <h2 style="color: #2563eb;">🧪 TDX 連線診斷工具</h2>
+    <p style="font-size: 14px; color: #666;">請輸入您在 TDX 官網複製的完整金鑰：</p>
 
-        <div id="setupSection" class="bg-white p-6 rounded-2xl shadow-lg border border-slate-100">
-            <h2 class="font-bold mb-4 flex items-center">🔑 API 設定</h2>
-            <div class="space-y-3">
-                <input type="password" id="clientId" placeholder="Client ID (需含 barry.lin-)" class="w-full p-3 bg-slate-50 border rounded-xl outline-none">
-                <input type="password" id="clientSecret" placeholder="Client Secret" class="w-full p-3 bg-slate-50 border rounded-xl outline-none">
-                <button onclick="saveKeys()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl active:bg-blue-700 transition-colors">儲存金鑰</button>
-            </div>
-        </div>
+    <div style="margin-bottom: 15px;">
+        <label style="display:block; font-size: 12px; margin-bottom: 5px;">Client ID (需含 barry.lin-)</label>
+        <input type="text" id="testId" style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px;" placeholder="貼上完整 ID">
+    </div>
 
-        <div id="mainSection" class="hidden space-y-4">
-            <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-100">
-                <div class="flex gap-2">
-                    <input type="text" id="routeInput" inputmode="search" placeholder="路線 (如: 647, 650)" class="flex-1 p-3 bg-slate-50 border rounded-xl outline-none">
-                    <button onclick="searchRoute()" id="searchBtn" class="bg-blue-600 text-white px-6 rounded-xl font-bold">搜尋</button>
-                </div>
-            </div>
-            <div id="directionSection" class="hidden bg-white p-6 rounded-2xl shadow-lg border border-slate-100 animate-pulse">
-                <select id="directionSelect" class="w-full p-3 bg-slate-50 border rounded-xl"></select>
-            </div>
-            <button onclick="clearAndReset()" class="w-full text-xs text-slate-300 py-2">清除紀錄並重新設定</button>
-        </div>
+    <div style="margin-bottom: 20px;">
+        <label style="display:block; font-size: 12px; margin-bottom: 5px;">Client Secret</label>
+        <input type="password" id="testSecret" style="width: 100%; padding: 12px; border: 1px solid #ccc; border-radius: 8px;" placeholder="貼上完整 Secret">
+    </div>
 
-        <div id="debugInfo" class="hidden text-[10px] font-mono text-red-400 p-2 bg-red-50 rounded"></div>
+    <button id="runTest" style="width: 100%; padding: 15px; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+        開始發送測試請求
+    </button>
+
+    <div id="resultBox" style="margin-top: 20px; display: none;">
+        <hr>
+        <h3 id="statusTitle">診斷結果</h3>
+        <div id="statusDesc" style="font-size: 14px; margin-bottom: 10px;"></div>
+        <pre id="rawResponse" style="background: #f4f4f4; padding: 15px; border-radius: 8px; font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #333;"></pre>
     </div>
 
     <script>
-        const setup = document.getElementById('setupSection');
-        const main = document.getElementById('mainSection');
-        const debug = document.getElementById('debugInfo');
+        document.getElementById('runTest').onclick = async () => {
+            const id = document.getElementById('testId').value.trim();
+            const secret = document.getElementById('testSecret').value.trim();
+            const resultBox = document.getElementById('resultBox');
+            const statusTitle = document.getElementById('statusTitle');
+            const statusDesc = document.getElementById('statusDesc');
+            const rawResponse = document.getElementById('rawResponse');
 
-        window.onload = () => {
-            if (localStorage.getItem('tdx_id')) {
-                setup.classList.add('hidden');
-                main.classList.remove('hidden');
-            }
-        };
+            if (!id || !secret) return alert("請輸入完整金鑰");
 
-        function saveKeys() {
-            const id = document.getElementById('clientId').value.trim();
-            const secret = document.getElementById('clientSecret').value.trim();
-            if (!id.includes('barry.lin-')) return alert("ID 格式不正確，請包含完整前綴。");
-            localStorage.setItem('tdx_id', id);
-            localStorage.setItem('tdx_secret', secret);
-            location.reload();
-        }
-
-        function clearAndReset() {
-            if(confirm("確定要重設嗎？")) { localStorage.clear(); location.reload(); }
-        }
-
-        async function getAccessToken() {
-            const id = localStorage.getItem('tdx_id');
-            const secret = localStorage.getItem('tdx_secret');
-            debug.classList.add('hidden');
+            resultBox.style.display = 'block';
+            statusTitle.innerText = "⏳ 正在連線中...";
+            statusDesc.innerText = "正在嘗試與 TDX 伺服器建立握手協定...";
+            rawResponse.innerText = "";
 
             try {
-                // 使用最簡單的 fetch 參數，避開複雜的 Preflight 檢查
-                const res = await fetch("https://tdx.transportdata.tw/auth/realms/TDX/protocol/openid-connect/token", {
+                // iPhone Safari 最相容的 fetch 寫法
+                const response = await fetch("https://tdx.transportdata.tw/auth/realms/TDX/protocol/openid-connect/token", {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(secret)}`,
-                    mode: 'cors',
-                    cache: 'no-cache'
+                    cache: 'no-store'
                 });
 
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
-                return data.access_token;
-            } catch (e) {
-                console.error(e);
-                debug.innerText = `Error: ${e.message}`;
-                debug.classList.remove('hidden');
-                alert("iPhone 連線失敗 (Load failed)\n請嘗試切換網路(Wi-Fi/4G)或重新檢查金鑰。");
-                return null;
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusTitle.innerText = "✅ 連線成功！";
+                    statusTitle.style.color = "green";
+                    statusDesc.innerText = "您的金鑰正確，且 iPhone 網路連線正常。";
+                    rawResponse.innerText = "Access Token 取得成功：\n" + data.access_token;
+                } else {
+                    statusTitle.innerText = "❌ 驗證失敗";
+                    statusTitle.style.color = "orange";
+                    statusDesc.innerText = "TDX 伺服器有回應，但拒絕了您的金鑰。";
+                    rawResponse.innerText = JSON.stringify(data, null, 2);
+                }
+            } catch (err) {
+                statusTitle.innerText = "🚫 網路阻斷 (Load Failed)";
+                statusTitle.style.color = "red";
+                statusDesc.innerText = "請求尚未到達伺服器就被 iPhone 系統攔截了。";
+                rawResponse.innerText = `錯誤類型: ${err.name}\n詳細內容: ${err.message}\n\n這通常是 Safari 的安全限制或網路節點封鎖。`;
             }
-        }
-
-        async function searchRoute() {
-            const routeName = document.getElementById('routeInput').value.trim();
-            if (!routeName) return;
-
-            const btn = document.getElementById('searchBtn');
-            btn.disabled = true;
-            btn.innerText = "⏳";
-
-            const token = await getAccessToken();
-            if (!token) {
-                btn.disabled = false; btn.innerText = "搜尋";
-                return;
-            }
-
-            // 優先搜尋新北市 (647/650 皆屬新北或跨區)
-            const cities = ["NewTaipei", "Taipei"];
-            let found = null;
-
-            for (const city of cities) {
-                try {
-                    const res = await fetch(`https://tdx.transportdata.tw/api/basic/v2/Bus/Route/City/${city}/${routeName}?$format=JSON`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
-                    const data = await res.json();
-                    if (data && data.length > 0) {
-                        found = data.find(r => r.RouteName.Zh_tw === routeName) || data[0];
-                        break;
-                    }
-                } catch (e) { console.warn(city + " fail"); }
-            }
-
-            btn.disabled = false; btn.innerText = "搜尋";
-
-            if (found) {
-                const sel = document.getElementById('directionSelect');
-                sel.innerHTML = `<option value="">選擇方向...</option>
-                    <option value="0">往 ${found.DestinationStopNameZh}</option>
-                    <option value="1">往 ${found.DepartureStopNameZh}</option>`;
-                document.getElementById('directionSection').classList.remove('hidden', 'animate-pulse');
-            } else {
-                alert("找不到路線「" + routeName + "」");
-            }
-        }
+        };
     </script>
 </body>
 </html>
