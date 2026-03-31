@@ -1,0 +1,21 @@
+{
+  "name": "公車快到了 - 公車到站提醒",
+  "short_name": "公車快到了",
+  "description": "台北市、新北市公車即時到站語音提醒，專為長輩設計",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f0f4f8",
+  "theme_color": "#1a56a0",
+  "orientation": "portrait-primary",
+  "lang": "zh-TW",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%231a56a0'/><text x='96' y='135' font-size='110' text-anchor='middle'>🚌</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["transportation", "utilities"],
+  "screenshots": []
+}

@@ -1,105 +1,1691 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TDX 中繼連線診斷</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=2.0, user-scalable=yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="公車快到了">
+<meta name="theme-color" content="#1a56a0">
+<link rel="manifest" href="manifest.json">
+<title>公車快到了 🚌</title>
+<style>
+:root {
+  --primary: #1a56a0;
+  --primary-light: #2d7dd2;
+  --primary-dark: #0e3a6e;
+  --accent: #e85d04;
+  --accent-light: #fb8500;
+  --success: #2d6a4f;
+  --success-bg: #d8f3dc;
+  --success-border: #52b788;
+  --warning: #c1121f;
+  --warning-bg: #ffe5e5;
+  --info-bg: #e8f4fd;
+  --info-border: #2d7dd2;
+  --bg: #f0f4f8;
+  --card: #ffffff;
+  --text: #1a1a2e;
+  --text-muted: #5a6272;
+  --border: #c8d0e0;
+  --shadow: 0 4px 20px rgba(26,86,160,0.12);
+  --radius: 20px;
+  --radius-sm: 12px;
+  --font-scale: 1;
+}
+[data-font="large"] { --font-scale: 1.2; }
+[data-font="xlarge"] { --font-scale: 1.45; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html { font-size: calc(17px * var(--font-scale)); }
+
+body {
+  font-family: "PingFang TC", "Microsoft JhengHei", "蘋方-繁", "微軟正黑體", "Noto Sans TC", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 60px;
+}
+
+/* ── Header ── */
+.app-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 14px 16px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 3px 14px rgba(0,0,0,0.22);
+}
+.header-left h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: 1px; }
+.header-left .subtitle { font-size: 0.7rem; opacity: 0.78; margin-top: 1px; }
+.header-right { display: flex; gap: 8px; }
+.icon-btn {
+  background: rgba(255,255,255,0.16);
+  border: 1.5px solid rgba(255,255,255,0.35);
+  color: #fff;
+  border-radius: 50%;
+  width: 48px; height: 48px;
+  font-size: 1.25rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+  transition: background 0.15s;
+}
+.icon-btn:active { background: rgba(255,255,255,0.3); }
+
+/* ── Sections ── */
+.section {
+  margin: 14px 12px 0;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.section-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 12px 18px;
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-body { padding: 16px; }
+
+/* ── Status bar ── */
+.status-bar {
+  margin: 12px 12px 0;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+.status-bar.idle { background: var(--info-bg); color: var(--primary); border: 1.5px solid var(--info-border); }
+.status-bar.monitoring { background: var(--success-bg); color: var(--success); border: 1.5px solid var(--success-border); }
+.status-bar.alert { background: var(--warning-bg); color: var(--warning); border: 1.5px solid var(--warning); animation: pulse-border 1s infinite; }
+.status-bar.error { background: #fff3cd; color: #856404; border: 1.5px solid #ffc107; }
+
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(193,18,31,0.4); }
+  50% { box-shadow: 0 0 0 6px rgba(193,18,31,0); }
+}
+
+/* ── Form controls ── */
+label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  margin-bottom: 6px;
+}
+input[type="text"], input[type="number"], select {
+  width: 100%;
+  padding: 13px 16px;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+  -webkit-appearance: none;
+}
+input:focus, select:focus { border-color: var(--primary); }
+.form-row { margin-bottom: 14px; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+
+/* ── Big Buttons ── */
+.btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 1.1rem;
+  font-family: inherit;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  touch-action: manipulation;
+  transition: transform 0.1s, opacity 0.1s;
+  letter-spacing: 1px;
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-light); }
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-success { background: var(--success); color: #fff; }
+.btn-outline { background: transparent; border: 2px solid var(--primary); color: var(--primary); }
+.btn-danger { background: var(--warning); color: #fff; }
+.btn-sm {
+  width: auto;
+  padding: 10px 18px;
+  font-size: 0.9rem;
+  border-radius: 10px;
+}
+.btn-gap { margin-top: 10px; }
+
+/* ── Bus tag chips ── */
+.bus-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  min-height: 44px;
+}
+.bus-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--primary);
+  color: #fff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.bus-tag.alerting { background: var(--warning); animation: pulse-tag 1s infinite; }
+.bus-tag.arrived { background: var(--success); }
+@keyframes pulse-tag {
+  0%, 100% { opacity: 1; } 50% { opacity: 0.6; }
+}
+.bus-tag-remove {
+  background: rgba(255,255,255,0.3);
+  border: none;
+  color: #fff;
+  border-radius: 50%;
+  width: 22px; height: 22px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  touch-action: manipulation;
+}
+
+/* ── Bus info card ── */
+.bus-info-card {
+  background: var(--info-bg);
+  border: 1.5px solid var(--info-border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-top: 8px;
+  font-size: 0.88rem;
+}
+.bus-info-card .route-name { font-size: 1rem; font-weight: 700; color: var(--primary); }
+.bus-info-card .route-detail { color: var(--text-muted); margin-top: 3px; }
+
+/* Direction selection cards */
+.dir-card {
+  border: 2.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 12px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.15s;
+  background: #fff;
+  text-align: center;
+  user-select: none;
+}
+.dir-card:active { transform: scale(0.97); }
+.dir-card.selected {
+  border-color: var(--primary);
+  background: var(--info-bg);
+}
+.dir-card .dir-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.dir-card .dir-dest {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary-dark);
+  line-height: 1.3;
+}
+.dir-card.selected .dir-dest { color: var(--primary); }
+.dir-card .dir-origin {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+/* ── Alert list ── */
+.alert-list { display: flex; flex-direction: column; gap: 10px; }
+.alert-item {
+  background: var(--warning-bg);
+  border: 2px solid var(--warning);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+}
+.alert-item.close { background: #fff0e0; border-color: var(--accent); }
+.alert-item.arrived { background: var(--success-bg); border-color: var(--success-border); }
+.alert-item-bus { font-size: 1.3rem; font-weight: 800; color: var(--warning); }
+.alert-item.close .alert-item-bus { color: var(--accent); }
+.alert-item.arrived .alert-item-bus { color: var(--success); }
+.alert-item-detail { font-size: 0.9rem; margin-top: 4px; color: var(--text); }
+.alert-item-stop { font-size: 0.88rem; color: var(--text-muted); margin-top: 2px; }
+
+/* ── Progress stops ── */
+.stops-progress {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-top: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.stop-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.stop-dot.passed { background: var(--primary-light); }
+.stop-dot.current { background: var(--accent); width: 16px; height: 16px; box-shadow: 0 0 0 4px rgba(232,93,4,0.3); }
+.stop-dot.user { background: var(--warning); width: 16px; height: 16px; border: 3px solid #fff; box-shadow: 0 0 0 3px var(--warning); }
+.stop-line { flex: 1; height: 3px; background: var(--border); min-width: 8px; }
+.stop-line.passed { background: var(--primary-light); }
+
+/* ── GPS indicator ── */
+.gps-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--info-bg);
+  border-radius: var(--radius-sm);
+  margin-bottom: 14px;
+  border: 1.5px solid var(--info-border);
+}
+.gps-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.gps-dot.active { background: var(--success-border); animation: blink 1.2s infinite; }
+.gps-dot.error { background: var(--warning); }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+.gps-text { font-size: 0.88rem; color: var(--text); flex: 1; }
+
+/* ── Favorites ── */
+.fav-list { display: flex; flex-direction: column; gap: 8px; }
+.fav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fav-item:active { background: var(--info-bg); }
+.fav-icon { font-size: 1.3rem; }
+.fav-info { flex: 1; }
+.fav-buses { font-weight: 700; font-size: 1rem; color: var(--primary); }
+.fav-detail { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+.fav-del {
+  background: none; border: none;
+  font-size: 1.2rem; cursor: pointer; color: var(--text-muted);
+  padding: 6px; touch-action: manipulation;
+}
+
+/* ── Modal overlay ── */
+.modal-backdrop {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--card);
+  border-radius: var(--radius);
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.3);
+}
+.modal-header {
+  background: var(--primary);
+  color: #fff;
+  padding: 16px 18px;
+  border-radius: var(--radius) var(--radius) 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.modal-header h2 { font-size: 1.1rem; font-weight: 700; }
+.modal-close {
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  border-radius: 50%;
+  width: 36px; height: 36px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.modal-body { padding: 18px; }
+
+/* ── Font switcher ── */
+.font-switcher { display: flex; gap: 8px; }
+.font-btn {
+  flex: 1; padding: 12px 8px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--text-muted);
+  touch-action: manipulation;
+  transition: all 0.15s;
+}
+.font-btn.active { border-color: var(--primary); background: var(--info-bg); color: var(--primary); }
+
+/* ── API setup ── */
+.api-setup-notice {
+  background: #fff8e1;
+  border: 2px solid #ffc107;
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  margin-bottom: 14px;
+  font-size: 0.88rem;
+  color: #6d4c00;
+  line-height: 1.6;
+}
+
+/* ── Monitoring indicator ── */
+.monitor-ring {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  vertical-align: middle;
+}
+.monitor-ring.spinning {
+  border-color: var(--success-border);
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty state ── */
+.empty-state {
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+.empty-state .big-icon { font-size: 2.5rem; margin-bottom: 8px; }
+
+/* ── Divider ── */
+.divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+/* ── Toast ── */
+.toast-container {
+  position: fixed;
+  bottom: 20px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 999;
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.toast {
+  background: rgba(26,22,46,0.92);
+  color: #fff;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  animation: toast-in 0.3s ease;
+  white-space: nowrap;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── PWA install banner ── */
+.pwa-banner {
+  display: none;
+  background: var(--primary-dark);
+  color: #fff;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  align-items: center;
+  gap: 10px;
+}
+.pwa-banner.show { display: flex; }
+.pwa-banner-text { flex: 1; line-height: 1.4; }
+.pwa-banner-close { background: none; border: none; color: #fff; font-size: 1.1rem; cursor: pointer; touch-action: manipulation; }
+
+/* ── Loading spinner ── */
+.spinner {
+  display: inline-block;
+  width: 20px; height: 20px;
+  border: 3px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Alert notification overlay ── */
+.alert-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(193,18,31,0.92);
+  z-index: 300;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 24px;
+  animation: flash-bg 1s infinite;
+}
+.alert-overlay.show { display: flex; }
+@keyframes flash-bg {
+  0%, 100% { background: rgba(193,18,31,0.92); }
+  50% { background: rgba(232,93,4,0.92); }
+}
+.alert-overlay h2 { color: #fff; font-size: 2rem; font-weight: 800; margin-bottom: 12px; text-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+.alert-overlay p { color: rgba(255,255,255,0.92); font-size: 1.1rem; margin-bottom: 20px; line-height: 1.6; }
+.alert-overlay-dismiss {
+  background: #fff;
+  color: var(--warning);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 14px 36px;
+  font-size: 1.1rem;
+  font-weight: 800;
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+/* ── Countdown timer ── */
+.next-refresh {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: right;
+  margin-top: 6px;
+}
+</style>
 </head>
-<body class="bg-slate-100 p-6 font-sans">
-    <div class="max-w-md mx-auto bg-white p-8 rounded-3xl shadow-2xl">
-        <h2 class="text-2xl font-bold text-blue-600 mb-2 text-center">🏁 最終驗證測試</h2>
-        <p class="text-slate-400 text-[10px] text-center mb-6 uppercase tracking-widest">v2.1 - Proxy Debug Mode</p>
+<body>
 
-        <div class="space-y-4">
-            <div>
-                <label class="block text-xs font-bold text-slate-500 mb-1 ml-1">CLIENT ID</label>
-                <input type="text" id="id" placeholder="barry.lin-..." class="w-full p-4 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-400 transition-all shadow-sm">
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-slate-500 mb-1 ml-1">CLIENT SECRET</label>
-                <input type="password" id="secret" placeholder="TDX Secret" class="w-full p-4 border rounded-2xl outline-none focus:ring-2 focus:ring-blue-400 transition-all shadow-sm">
-            </div>
-            <button onclick="runTest()" id="btn" class="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl shadow-lg active:scale-95 transition-all">
-                立即測試連線
-            </button>
-        </div>
+<!-- PWA install banner -->
+<div class="pwa-banner" id="pwaBanner">
+  <span style="font-size:1.4rem">📲</span>
+  <span class="pwa-banner-text">加入主畫面可在背景持續提醒！<br>請點選瀏覽器的「加入主畫面」</span>
+  <button class="pwa-banner-close" onclick="document.getElementById('pwaBanner').classList.remove('show')">✕</button>
+</div>
 
-        <div id="result" class="mt-8 hidden border-t pt-6">
-            <p id="status" class="font-bold text-center mb-4 text-lg"></p>
-            <div class="bg-slate-900 rounded-xl p-4 shadow-inner">
-                <div class="text-[10px] text-slate-500 mb-2 font-mono uppercase tracking-widest flex justify-between">
-                    <span>Server Response Log</span>
-                    <span id="resStatus" class="text-blue-400"></span>
-                </div>
-                <pre id="log" class="text-green-400 text-[11px] font-mono overflow-auto max-h-60 whitespace-pre-wrap break-all leading-relaxed"></pre>
-            </div>
-        </div>
+<!-- Header -->
+<header class="app-header">
+  <div class="header-left">
+    <h1>🚌 公車快到了</h1>
+    <div class="subtitle">台北市 ／ 新北市 公車到站提醒</div>
+  </div>
+  <div class="header-right">
+    <button class="icon-btn" onclick="openSettings()" title="設定">⚙️</button>
+    <button class="icon-btn" onclick="openFavorites()" title="常用路線">⭐</button>
+  </div>
+</header>
+
+<!-- Status bar -->
+<div class="status-bar idle" id="statusBar">
+  <span id="statusIcon">💤</span>
+  <span id="statusText">尚未開始監控，請設定公車並按「開始監控」</span>
+</div>
+
+<!-- GPS section -->
+<div class="section">
+  <div class="section-header">📍 我的位置</div>
+  <div class="section-body">
+    <div class="gps-row" id="gpsRow">
+      <div class="gps-dot" id="gpsDot"></div>
+      <div class="gps-text" id="gpsText">點擊下方按鈕取得目前位置</div>
+    </div>
+    <button class="btn btn-primary" onclick="startGPS()" id="gpsBtn">
+      📍 取得我的位置
+    </button>
+    <div id="nearestStopInfo" style="display:none; margin-top:10px;">
+      <div class="bus-info-card">
+        <div class="route-name" id="nearestStopName">—</div>
+        <div class="route-detail" id="nearestStopDetail">最近的公車站</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bus selection section -->
+<div class="section">
+  <div class="section-header">🚌 選擇公車</div>
+  <div class="section-body">
+
+    <div class="form-row">
+      <label>選擇城市</label>
+      <select id="citySelect" onchange="onCityChange()">
+        <option value="Taipei">台北市</option>
+        <option value="NewTaipei">新北市</option>
+      </select>
     </div>
 
-    <script>
-        async function runTest() {
-            const id = document.getElementById('id').value.trim();
-            const secret = document.getElementById('secret').value.trim();
-            const log = document.getElementById('log');
-            const status = document.getElementById('status');
-            const resStatus = document.getElementById('resStatus');
-            const resultDiv = document.getElementById('result');
-            const btn = document.getElementById('btn');
+    <div class="form-row">
+      <label>公車號碼</label>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <input type="text" id="busInput" placeholder="例如：650" maxlength="10" style="flex:1"
+          oninput="onBusInputChange()" onkeydown="if(event.key==='Enter')lookupDirections()">
+        <button class="btn btn-outline btn-sm" onclick="lookupDirections()" id="queryBtn" style="white-space:nowrap; flex-shrink:0">
+          🔍 查詢
+        </button>
+      </div>
+    </div>
 
-            if(!id || !secret) return alert("請填寫金鑰資料");
+    <!-- Direction cards — shown after lookup -->
+    <div id="dirCards" style="display:none; margin-bottom:14px;">
+      <label>選擇行駛方向（點選確認）</label>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px;" id="dirCardGrid"></div>
+    </div>
 
-            btn.disabled = true;
-            resultDiv.classList.remove('hidden');
-            status.innerText = "⏳ 正在透過 Google 轉接...";
-            status.className = "text-blue-500 font-bold text-center";
-            log.innerText = "> 發送請求至 Google Apps Script...\n> 目標網址: script.google.com/macros/s/.../exec";
+    <!-- Hidden real select (kept for JS compatibility) -->
+    <select id="dirSelect" style="display:none">
+      <option value="0">去程</option>
+      <option value="1">返程</option>
+    </select>
 
-            const webAppUrl = "https://script.google.com/macros/s/AKfycbwfMDYvhsm2vCZBZfz0xe8esA40h32u4lgvkNZyhrS4iTBpgEaFJDd-WC7C1WSr0Rt-/exec"; 
+    <div id="routeInfo" style="display:none; margin-top:0; margin-bottom:12px;"></div>
 
-            try {
-                // 使用 POST 呼叫中繼站
-                const response = await fetch(webAppUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                    body: JSON.stringify({ id: id, secret: secret })
-                });
+    <button class="btn btn-primary" onclick="addBus()" id="addBusBtn" disabled style="opacity:0.5">
+      ➕ 加入監控清單
+    </button>
 
-                resStatus.innerText = "HTTP " + response.status;
-                const responseText = await response.text();
-                
-                try {
-                    // 嘗試解析 JSON
-                    const data = JSON.parse(responseText);
-                    
-                    if (data.access_token) {
-                        status.innerText = "✅ 恭喜！連線成功";
-                        status.className = "text-green-600 font-bold text-center text-xl";
-                        log.innerText = "> Token 取得成功：\n\n" + data.access_token;
-                    } else {
-                        status.innerText = "❌ 驗證失敗";
-                        status.className = "text-orange-500 font-bold text-center";
-                        log.innerText = "> TDX 伺服器拒絕金鑰：\n" + JSON.stringify(data, null, 2);
-                    }
-                } catch (jsonErr) {
-                    // 如果不是 JSON，可能是回傳了 "Page not found!" 的 HTML
-                    status.innerText = "🚫 回傳格式異常";
-                    status.className = "text-red-600 font-bold text-center";
-                    log.innerText = "> Google 伺服器回傳了非 JSON 內容 (可能是 404 網頁)：\n\n" + responseText;
-                    
-                    if (responseText.includes("Page not found")) {
-                        log.innerText += "\n\n⚠️ 診斷：偵測到 404 網頁。請確認 Google Script 是否已部署為「新版本」且「誰有權存取」設為「任何人」。";
-                    }
-                }
+    <div class="divider"></div>
 
-            } catch (err) {
-                status.innerText = "🚫 網路連線錯誤";
-                status.className = "text-red-600 font-bold text-center";
-                log.innerText = "> 無法連接到中繼站：\n" + err.message;
-            } finally {
-                btn.disabled = false;
-            }
+    <label>監控中的公車</label>
+    <div class="bus-tags" id="busTags">
+      <div class="empty-state" style="padding:8px 0; font-size:0.85rem; width:100%">尚未加入任何公車</div>
+    </div>
+
+    <div class="form-row">
+      <label>提前幾站開始提醒</label>
+      <select id="alertStops">
+        <option value="2">提前 2 站</option>
+        <option value="3">提前 3 站</option>
+        <option value="4">提前 4 站</option>
+        <option value="5" selected>提前 5 站（預設）</option>
+        <option value="6">提前 6 站</option>
+        <option value="7">提前 7 站</option>
+      </select>
+    </div>
+
+  </div>
+</div>
+
+<!-- Control section -->
+<div class="section">
+  <div class="section-header">🎛️ 監控控制</div>
+  <div class="section-body">
+    <button class="btn btn-accent" onclick="startMonitoring()" id="startBtn">
+      🔔 開始監控
+    </button>
+    <button class="btn btn-danger btn-gap" onclick="stopMonitoring()" id="stopBtn" style="display:none">
+      ⛔ 停止監控
+    </button>
+    <div class="next-refresh" id="nextRefresh"></div>
+    <div style="margin-top:12px">
+      <button class="btn btn-outline btn-sm" onclick="saveFavorite()">⭐ 儲存為常用路線</button>
+    </div>
+  </div>
+</div>
+
+<!-- Live alerts section -->
+<div class="section" id="alertSection" style="display:none">
+  <div class="section-header" style="background:var(--warning)">🔔 即時到站資訊 <span class="monitor-ring spinning" id="monitorRing"></span></div>
+  <div class="section-body">
+    <div class="alert-list" id="alertList"></div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- Alert overlay (full screen) -->
+<div class="alert-overlay" id="alertOverlay">
+  <div style="font-size:3rem">🚌</div>
+  <h2 id="overlayTitle">公車快到了！</h2>
+  <p id="overlayMsg">載入中…</p>
+  <button class="alert-overlay-dismiss" onclick="dismissOverlay()">知道了 ✓</button>
+</div>
+
+<!-- Settings modal -->
+<div class="modal-backdrop" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⚙️ 應用程式設定</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="form-row">
+        <label>🔑 TDX API Client ID</label>
+        <input type="text" id="settingClientId" placeholder="請輸入您的 Client ID">
+      </div>
+      <div class="form-row">
+        <label>🔐 TDX API Client Secret</label>
+        <input type="text" id="settingClientSecret" placeholder="請輸入您的 Client Secret" autocomplete="off">
+      </div>
+      <div class="api-setup-notice">
+        ℹ️ TDX API 金鑰請至 <strong>tdx.transportdata.tw</strong> 免費申請。<br>
+        金鑰會安全儲存在您的裝置瀏覽器中，不會上傳至任何伺服器。
+      </div>
+      <button class="btn btn-primary" onclick="saveApiKeys()">💾 儲存 API 金鑰</button>
+
+      <div class="divider"></div>
+
+      <div class="form-row">
+        <label>🔤 字體大小</label>
+        <div class="font-switcher">
+          <button class="font-btn" data-size="normal" onclick="setFontSize('normal')">標準<br><span style="font-size:0.75em">A</span></button>
+          <button class="font-btn" data-size="large" onclick="setFontSize('large')">大字<br><span style="font-size:0.9em">A</span></button>
+          <button class="font-btn" data-size="xlarge" onclick="setFontSize('xlarge')">特大<br><span style="font-size:1.1em">A</span></button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-row">
+        <label>🔊 語音測試</label>
+        <button class="btn btn-outline" onclick="testSpeech()">🔊 播放測試語音</button>
+      </div>
+      <div class="form-row" style="margin-top:10px">
+        <label>📳 震動測試</label>
+        <button class="btn btn-outline" onclick="testVibrate()">📳 測試震動</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div style="font-size:0.8rem; color:var(--text-muted); line-height:1.7">
+        <strong>背景執行說明</strong><br>
+        • iOS Safari：請將本頁加入主畫面，開啟後可背景執行<br>
+        • Android Chrome：支援背景通知，請允許通知權限<br>
+        • 電腦版：保持瀏覽器頁籤開啟即可<br>
+        • 螢幕常亮功能：Chrome / Edge 支援，Safari 請手動設定
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Favorites modal -->
+<div class="modal-backdrop" id="favoritesModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>⭐ 常用路線</h2>
+      <button class="modal-close" onclick="closeModal('favoritesModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="favList">
+        <div class="empty-state">
+          <div class="big-icon">⭐</div>
+          尚未儲存任何常用路線
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+const STATE = {
+  buses: [],          // [{busNo, dir, routeId, stopList, startStop, endStop, city}]
+  userLat: null,
+  userLng: null,
+  nearestStop: null,  // {stopId, stopName, stopSeq, routeId}
+  monitoring: false,
+  token: null,
+  tokenExpiry: 0,
+  intervalId: null,
+  countdownId: null,
+  countdown: 30,
+  lastAlertState: {},  // busNo -> {stopsAway, stopName, announced}
+  arrivedBuses: new Set(),
+  speechQueue: [],
+  isSpeaking: false,
+  wakeLock: null,
+  city: 'Taipei',
+};
+
+// ═══════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════
+const TDX_TOKEN_URL = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token';
+const TDX_BASE = 'https://tdx.transportdata.tw/api/basic';
+const REFRESH_INTERVAL = 30000;
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
+  loadFavorites();
+  checkPWA();
+  unlockAudio();
+
+  // Register service worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
+  // Wake lock attempt
+  requestWakeLock();
+
+  // Page visibility - pause/resume monitoring
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && STATE.monitoring) {
+      fetchBusData();
+    }
+  });
+
+  // Stop all on page close
+  window.addEventListener('beforeunload', () => {
+    stopMonitoring();
+  });
+});
+
+// ═══════════════════════════════════════════════
+// AUDIO UNLOCK (iOS requirement)
+// ═══════════════════════════════════════════════
+function unlockAudio() {
+  const unlock = () => {
+    if (window.speechSynthesis) {
+      const utt = new SpeechSynthesisUtterance('');
+      utt.volume = 0;
+      window.speechSynthesis.speak(utt);
+    }
+    document.removeEventListener('touchstart', unlock);
+    document.removeEventListener('click', unlock);
+  };
+  document.addEventListener('touchstart', unlock, { once: true });
+  document.addEventListener('click', unlock, { once: true });
+}
+
+// ═══════════════════════════════════════════════
+// SETTINGS & STORAGE
+// ═══════════════════════════════════════════════
+function loadSettings() {
+  const clientId = localStorage.getItem('tdx_client_id') || '';
+  const secret = localStorage.getItem('tdx_client_secret') || '';
+  document.getElementById('settingClientId').value = clientId;
+  document.getElementById('settingClientSecret').value = secret;
+
+  const fontSize = localStorage.getItem('font_size') || 'large';
+  setFontSize(fontSize, true);
+}
+
+function saveApiKeys() {
+  const id = document.getElementById('settingClientId').value.trim();
+  const secret = document.getElementById('settingClientSecret').value.trim();
+  if (!id || !secret) { showToast('❌ 請輸入完整的 Client ID 和 Secret'); return; }
+  localStorage.setItem('tdx_client_id', id);
+  localStorage.setItem('tdx_client_secret', secret);
+  STATE.token = null; STATE.tokenExpiry = 0;
+  showToast('✅ API 金鑰已儲存');
+  closeModal('settingsModal');
+}
+
+function setFontSize(size, silent) {
+  document.documentElement.dataset.font = size === 'normal' ? '' : size;
+  localStorage.setItem('font_size', size);
+  document.querySelectorAll('.font-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.size === size);
+  });
+  if (!silent) showToast('字體大小已更新');
+}
+
+function onCityChange() {
+  STATE.city = document.getElementById('citySelect').value;
+  STATE.buses = [];
+  renderBusTags();
+}
+
+// ═══════════════════════════════════════════════
+// TDX TOKEN
+// ═══════════════════════════════════════════════
+async function getToken() {
+  if (STATE.token && Date.now() < STATE.tokenExpiry - 60000) return STATE.token;
+
+  const clientId = localStorage.getItem('tdx_client_id');
+  const secret = localStorage.getItem('tdx_client_secret');
+  if (!clientId || !secret) {
+    openSettings();
+    throw new Error('請先設定 TDX API 金鑰');
+  }
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: clientId,
+    client_secret: secret,
+  });
+
+  const res = await fetch(TDX_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+  if (!res.ok) throw new Error('TDX 認證失敗，請確認 API 金鑰是否正確');
+  const data = await res.json();
+  STATE.token = data.access_token;
+  STATE.tokenExpiry = Date.now() + (data.expires_in * 1000);
+  return STATE.token;
+}
+
+async function tdxFetch(path) {
+  const token = await getToken();
+  const res = await fetch(TDX_BASE + path, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Accept-Encoding': 'gzip',
+    },
+  });
+  if (!res.ok) throw new Error(`API 錯誤 ${res.status}`);
+  return res.json();
+}
+
+// ═══════════════════════════════════════════════
+// GPS
+// ═══════════════════════════════════════════════
+function startGPS() {
+  const btn = document.getElementById('gpsBtn');
+  btn.innerHTML = '<span class="spinner"></span> 定位中…';
+  btn.disabled = true;
+  document.getElementById('gpsDot').className = 'gps-dot active';
+  document.getElementById('gpsText').textContent = '正在取得 GPS 位置…';
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      STATE.userLat = pos.coords.latitude;
+      STATE.userLng = pos.coords.longitude;
+      document.getElementById('gpsText').textContent =
+        `已定位：${STATE.userLat.toFixed(5)}, ${STATE.userLng.toFixed(5)}`;
+      btn.innerHTML = '🔄 更新位置';
+      btn.disabled = false;
+
+      // Find nearest stop if buses already selected
+      if (STATE.buses.length > 0) {
+        await findNearestStop();
+      } else {
+        showToast('✅ 位置已取得，請加入公車後系統會自動找最近站牌');
+      }
+    },
+    (err) => {
+      document.getElementById('gpsDot').className = 'gps-dot error';
+      document.getElementById('gpsText').textContent = '定位失敗：' + (err.message || '請允許定位權限');
+      btn.innerHTML = '📍 重試定位';
+      btn.disabled = false;
+      showToast('❌ 定位失敗，請確認已允許定位權限');
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+  );
+}
+
+// ═══════════════════════════════════════════════
+// DIRECTION LOOKUP & CARD UI
+// ═══════════════════════════════════════════════
+let _selectedDir = null;
+let _lookedUpRoutes = [];  // cache of both directions from last lookup
+
+function onBusInputChange() {
+  // Reset direction selection when bus number changes
+  _selectedDir = null;
+  _lookedUpRoutes = [];
+  document.getElementById('dirCards').style.display = 'none';
+  document.getElementById('routeInfo').style.display = 'none';
+  const addBtn = document.getElementById('addBusBtn');
+  addBtn.disabled = true;
+  addBtn.style.opacity = '0.5';
+}
+
+async function lookupDirections() {
+  const busNo = document.getElementById('busInput').value.trim();
+  const city = document.getElementById('citySelect').value;
+  if (!busNo) { showToast('請輸入公車號碼'); return; }
+
+  const btn = document.getElementById('queryBtn');
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+  _selectedDir = null;
+
+  try {
+    const data = await tdxFetch(
+      `/v2/Bus/Route/City/${city}/${encodeURIComponent(busNo)}?$format=JSON`
+    );
+
+    const routes = data.filter(r => r.RouteName.Zh_tw === busNo);
+    if (!routes || routes.length === 0) throw new Error(`找不到 ${busNo} 路線`);
+
+    _lookedUpRoutes = routes;
+    renderDirectionCards(routes, busNo);
+
+    btn.innerHTML = '✅ 查詢完成';
+    setTimeout(() => { btn.innerHTML = '🔍 查詢'; btn.disabled = false; }, 2000);
+  } catch (e) {
+    showToast('❌ ' + e.message);
+    btn.innerHTML = '🔍 查詢';
+    btn.disabled = false;
+  }
+}
+
+function renderDirectionCards(routes, busNo) {
+  const grid = document.getElementById('dirCardGrid');
+
+  // Build direction 0 and direction 1 options
+  // Most routes have one entry with both DepartureStop and DestinationStop
+  const route = routes[0];
+  const dep = route.DepartureStopNameZh || '起站';
+  const dest = route.DestinationStopNameZh || '終站';
+
+  const cards = [
+    {
+      dir: 0,
+      label: '去程',
+      arrowIcon: '➡️',
+      from: dep,
+      to: dest,
+    },
+    {
+      dir: 1,
+      label: '返程',
+      arrowIcon: '⬅️',
+      from: dest,
+      to: dep,
+    },
+  ];
+
+  grid.innerHTML = cards.map(c => `
+    <div class="dir-card" id="dirCard_${c.dir}" onclick="selectDirection(${c.dir}, '${escHtml(c.from)}', '${escHtml(c.to)}')">
+      <div class="dir-label">${c.arrowIcon} ${c.label}</div>
+      <div class="dir-dest">往 ${c.to}</div>
+      <div class="dir-origin">從 ${c.from} 出發</div>
+    </div>
+  `).join('');
+
+  document.getElementById('dirCards').style.display = 'block';
+  document.getElementById('routeInfo').style.display = 'none';
+
+  const addBtn = document.getElementById('addBusBtn');
+  addBtn.disabled = true;
+  addBtn.style.opacity = '0.5';
+}
+
+function selectDirection(dir, from, to) {
+  _selectedDir = dir;
+  document.getElementById('dirSelect').value = dir;
+
+  // Update card styles
+  document.querySelectorAll('.dir-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById('dirCard_' + dir);
+  if (card) card.classList.add('selected');
+
+  // Show confirmation info card
+  const busNo = document.getElementById('busInput').value.trim();
+  document.getElementById('routeInfo').style.display = 'block';
+  document.getElementById('routeInfo').innerHTML = `
+    <div class="bus-info-card">
+      <div class="route-name">🚌 ${busNo} 路（${dir === 0 ? '去程' : '返程'}）</div>
+      <div class="route-detail" style="font-size:0.95rem; margin-top:6px;">
+        <span style="color:var(--success); font-weight:700">🟢 從 ${from}</span>
+      </div>
+      <div class="route-detail" style="font-size:0.95rem; margin-top:4px;">
+        <span style="color:var(--warning); font-weight:700">🔴 往 ${to}</span>
+      </div>
+    </div>`;
+
+  const addBtn = document.getElementById('addBusBtn');
+  addBtn.disabled = false;
+  addBtn.style.opacity = '1';
+  showToast(`已選擇 ${busNo} 路 往 ${to}`);
+}
+
+function escHtml(s) { return (s||'').replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
+
+// Keep old queryRoute name as alias for compatibility
+async function queryRoute() { return lookupDirections(); }
+
+// ═══════════════════════════════════════════════
+// ADD / REMOVE BUS
+// ═══════════════════════════════════════════════
+async function addBus() {
+  const busNo = document.getElementById('busInput').value.trim();
+  const city = document.getElementById('citySelect').value;
+  if (!busNo) { showToast('請輸入公車號碼'); return; }
+  if (_selectedDir === null) { showToast('請先查詢並選擇行駛方向'); return; }
+  const dir = _selectedDir;
+
+  if (STATE.buses.find(b => b.busNo === busNo && b.dir === dir && b.city === city)) {
+    showToast('此公車已在清單中'); return;
+  }
+  if (STATE.buses.length >= 8) { showToast('最多可同時監控 8 條路線'); return; }
+
+  const addBtn = document.getElementById('addBusBtn');
+  addBtn.innerHTML = '<span class="spinner"></span> 載入中…';
+  addBtn.disabled = true;
+
+  showToast('⏳ 載入路線資料中…');
+  try {
+    const routeData = await tdxFetch(
+      `/v2/Bus/Route/City/${city}/${encodeURIComponent(busNo)}?$format=JSON`
+    );
+    const route = routeData.find(r => r.RouteName.Zh_tw === busNo);
+    if (!route) throw new Error(`找不到 ${busNo} 路線`);
+
+    // Get stop list
+    const stopsData = await tdxFetch(
+      `/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(busNo)}?$format=JSON`
+    );
+    const stopRoute = stopsData.find(s => s.RouteName.Zh_tw === busNo && s.Direction === dir);
+    const stops = stopRoute ? stopRoute.Stops : [];
+
+    const depStop = route.DepartureStopNameZh || '—';
+    const destStop = route.DestinationStopNameZh || '—';
+
+    const busEntry = {
+      busNo,
+      dir,
+      city,
+      routeId: route.RouteUID,
+      routeName: route.RouteName.Zh_tw,
+      startStop: dir === 0 ? depStop : destStop,
+      endStop: dir === 0 ? destStop : depStop,
+      stops,
+    };
+    STATE.buses.push(busEntry);
+    renderBusTags();
+
+    // Reset input area
+    document.getElementById('busInput').value = '';
+    document.getElementById('dirCards').style.display = 'none';
+    document.getElementById('routeInfo').style.display = 'none';
+    _selectedDir = null;
+    _lookedUpRoutes = [];
+    addBtn.innerHTML = '➕ 加入監控清單';
+    addBtn.disabled = true;
+    addBtn.style.opacity = '0.5';
+
+    const dirLabel = dir === 0 ? '去程' : '返程';
+    showToast(`✅ 已加入 ${busNo} 路 往 ${busEntry.endStop}`);
+
+    if (STATE.userLat) await findNearestStop();
+
+  } catch (e) {
+    showToast('❌ ' + e.message);
+    addBtn.innerHTML = '➕ 加入監控清單';
+    addBtn.disabled = false;
+    addBtn.style.opacity = '1';
+  }
+}
+
+function removeBus(idx) {
+  const b = STATE.buses[idx];
+  STATE.buses.splice(idx, 1);
+  STATE.arrivedBuses.delete(b.busNo);
+  delete STATE.lastAlertState[b.busNo];
+  renderBusTags();
+  showToast(`已移除 ${b.busNo}`);
+}
+
+function renderBusTags() {
+  const container = document.getElementById('busTags');
+  if (STATE.buses.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:8px 0;font-size:0.85rem;width:100%">尚未加入任何公車</div>';
+    return;
+  }
+  container.innerHTML = STATE.buses.map((b, i) => {
+    const cls = STATE.arrivedBuses.has(b.busNo) ? 'arrived' :
+                (STATE.lastAlertState[b.busNo]?.alerting ? 'alerting' : '');
+    const destLabel = b.endStop ? `往${b.endStop}` : (b.dir === 0 ? '去程' : '返程');
+    return `<div class="bus-tag ${cls}" style="flex-direction:column; align-items:flex-start; padding:8px 14px 8px 14px; border-radius:14px; gap:2px; position:relative; min-width:110px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; width:100%;">
+        <span style="font-size:1.1rem; font-weight:800; letter-spacing:1px;">🚌 ${b.busNo}</span>
+        <button class="bus-tag-remove" onclick="removeBus(${i})" style="margin-left:8px;">✕</button>
+      </div>
+      <div style="font-size:0.78rem; opacity:0.88; font-weight:600;">${destLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════
+// FIND NEAREST STOP
+// ═══════════════════════════════════════════════
+async function findNearestStop() {
+  if (!STATE.userLat || STATE.buses.length === 0) return;
+
+  let nearest = null;
+  let minDist = Infinity;
+
+  for (const bus of STATE.buses) {
+    for (const stop of bus.stops) {
+      const lat = stop.StopPosition?.PositionLat;
+      const lng = stop.StopPosition?.PositionLon;
+      if (!lat || !lng) continue;
+      const d = haversine(STATE.userLat, STATE.userLng, lat, lng);
+      if (d < minDist) {
+        minDist = d;
+        nearest = {
+          stopUID: stop.StopUID,
+          stopName: stop.StopName?.Zh_tw || stop.StopName,
+          stopSeq: stop.StopSequence,
+          busNo: bus.busNo,
+          dist: d,
+        };
+      }
+    }
+  }
+
+  if (nearest) {
+    STATE.nearestStop = nearest;
+    document.getElementById('nearestStopName').textContent = '📍 ' + nearest.stopName;
+    document.getElementById('nearestStopDetail').textContent =
+      `距您 ${Math.round(nearest.dist)} 公尺 ｜ 公車：${nearest.busNo}`;
+    document.getElementById('nearestStopInfo').style.display = 'block';
+    showToast(`✅ 最近站牌：${nearest.stopName}`);
+  }
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// ═══════════════════════════════════════════════
+// MONITORING
+// ═══════════════════════════════════════════════
+async function startMonitoring() {
+  if (STATE.buses.length === 0) { showToast('請先加入至少一條公車路線'); return; }
+  if (!STATE.userLat) { showToast('請先取得 GPS 位置'); return; }
+  if (!STATE.nearestStop) { await findNearestStop(); }
+  if (!STATE.nearestStop) { showToast('無法找到最近站牌，請確認 GPS 位置'); return; }
+
+  // Verify API keys
+  const clientId = localStorage.getItem('tdx_client_id');
+  if (!clientId) { openSettings(); showToast('請先設定 TDX API 金鑰'); return; }
+
+  STATE.monitoring = true;
+  STATE.arrivedBuses.clear();
+  STATE.lastAlertState = {};
+
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('stopBtn').style.display = 'flex';
+  document.getElementById('alertSection').style.display = 'block';
+  setStatus('monitoring', '🟢', `監控中 ｜ 等待站：${STATE.nearestStop.stopName}`);
+
+  await requestWakeLock();
+  await fetchBusData();
+  startCountdown();
+}
+
+function stopMonitoring() {
+  STATE.monitoring = false;
+  if (STATE.intervalId) { clearInterval(STATE.intervalId); STATE.intervalId = null; }
+  if (STATE.countdownId) { clearInterval(STATE.countdownId); STATE.countdownId = null; }
+  releaseWakeLock();
+  window.speechSynthesis?.cancel();
+  STATE.speechQueue = [];
+  STATE.isSpeaking = false;
+
+  document.getElementById('startBtn').style.display = 'flex';
+  document.getElementById('stopBtn').style.display = 'none';
+  document.getElementById('nextRefresh').textContent = '';
+  setStatus('idle', '💤', '監控已停止');
+  showToast('監控已停止');
+}
+
+function startCountdown() {
+  if (STATE.countdownId) clearInterval(STATE.countdownId);
+  STATE.countdown = 30;
+  updateCountdown();
+  STATE.countdownId = setInterval(() => {
+    STATE.countdown--;
+    updateCountdown();
+    if (STATE.countdown <= 0) {
+      STATE.countdown = 30;
+      if (STATE.monitoring) fetchBusData();
+    }
+  }, 1000);
+}
+
+function updateCountdown() {
+  if (!STATE.monitoring) return;
+  document.getElementById('nextRefresh').textContent = `🔄 下次更新：${STATE.countdown} 秒後`;
+}
+
+// ═══════════════════════════════════════════════
+// FETCH BUS REAL-TIME DATA
+// ═══════════════════════════════════════════════
+async function fetchBusData() {
+  if (!STATE.monitoring) return;
+  document.getElementById('monitorRing').className = 'monitor-ring spinning';
+
+  try {
+    const alertStops = parseInt(document.getElementById('alertStops').value);
+    const results = [];
+
+    for (const bus of STATE.buses) {
+      if (STATE.arrivedBuses.has(bus.busNo)) {
+        results.push({ bus, status: 'arrived' });
+        continue;
+      }
+      try {
+        const liveData = await tdxFetch(
+          `/v2/Bus/EstimatedTimeOfArrival/City/${bus.city}/${encodeURIComponent(bus.busNo)}?$format=JSON`
+        );
+
+        const userStopSeq = getUserStopSeq(bus);
+        if (userStopSeq === null) continue;
+
+        // Find buses currently on route - find which stop they're at
+        // EstimatedTimeOfArrival gives time per stop
+        // We also fetch real position
+        const realtime = await tdxFetch(
+          `/v2/Bus/RealTimeNearStop/City/${bus.city}/${encodeURIComponent(bus.busNo)}?$format=JSON`
+        );
+
+        const busOnRoute = realtime.filter(r =>
+          r.Direction === bus.dir &&
+          r.BusStatus <= 2  // 0=normal, 1=ahead, 2=delay
+        );
+
+        let closestBus = null;
+        let minDiff = Infinity;
+
+        for (const b of busOnRoute) {
+          const busSeq = b.StopSequence;
+          const diff = userStopSeq - busSeq;
+          if (diff >= 0 && diff < minDiff) {
+            minDiff = diff;
+            closestBus = b;
+          }
         }
-    </script>
+
+        if (closestBus) {
+          const stopsAway = minDiff;
+          const currentStopName = getStopName(bus, closestBus.StopSequence);
+          const prev = STATE.lastAlertState[bus.busNo];
+
+          // Check if bus just moved to a new stop (announce only on new stop)
+          const isNewStop = !prev || prev.stopSeq !== closestBus.StopSequence;
+
+          if (stopsAway === 0) {
+            // Bus ARRIVED at user stop
+            if (!STATE.arrivedBuses.has(bus.busNo)) {
+              STATE.arrivedBuses.add(bus.busNo);
+              STATE.lastAlertState[bus.busNo] = { stopsAway: 0, stopSeq: closestBus.StopSequence, alerting: false };
+              if (isNewStop) announceArrived(bus.busNo, STATE.nearestStop.stopName);
+              results.push({ bus, stopsAway: 0, currentStopName, status: 'arrived' });
+            }
+          } else if (stopsAway <= alertStops) {
+            // Bus within alert range
+            STATE.lastAlertState[bus.busNo] = { stopsAway, stopSeq: closestBus.StopSequence, alerting: true };
+            if (isNewStop) announceApproaching(bus.busNo, stopsAway, currentStopName);
+            results.push({ bus, stopsAway, currentStopName, status: 'alert' });
+          } else {
+            STATE.lastAlertState[bus.busNo] = { stopsAway, stopSeq: closestBus.StopSequence, alerting: false };
+            results.push({ bus, stopsAway, currentStopName, status: 'normal' });
+          }
+        } else {
+          // Get ETA from estimation
+          const etaStop = liveData.find(e =>
+            e.Direction === bus.dir &&
+            e.StopSequence === userStopSeq
+          );
+          const eta = etaStop ? Math.round(etaStop.EstimatedArrivalTime / 60) : null;
+          results.push({ bus, eta, status: 'waiting' });
+        }
+      } catch (e) {
+        results.push({ bus, error: e.message, status: 'error' });
+      }
+    }
+
+    renderAlerts(results);
+
+    // Check if ALL buses have arrived
+    const activeBuses = STATE.buses.filter(b => !STATE.arrivedBuses.has(b.busNo));
+    if (activeBuses.length === 0 && STATE.buses.length > 0) {
+      setTimeout(() => {
+        stopMonitoring();
+        setStatus('idle', '✅', '所有公車均已到站，監控結束');
+        showToast('🎉 所有公車均已到站！');
+      }, 3000);
+    }
+
+    renderBusTags();
+    document.getElementById('monitorRing').className = 'monitor-ring';
+
+  } catch (e) {
+    setStatus('error', '⚠️', '更新失敗：' + e.message);
+    document.getElementById('monitorRing').className = 'monitor-ring';
+    showToast('⚠️ 資料更新失敗，30秒後重試');
+  }
+}
+
+function getUserStopSeq(bus) {
+  if (!STATE.nearestStop) return null;
+  const match = bus.stops.find(s =>
+    s.StopName?.Zh_tw === STATE.nearestStop.stopName ||
+    s.StopUID === STATE.nearestStop.stopUID
+  );
+  return match ? match.StopSequence : null;
+}
+
+function getStopName(bus, seq) {
+  const stop = bus.stops.find(s => s.StopSequence === seq);
+  return stop?.StopName?.Zh_tw || stop?.StopName || `第${seq}站`;
+}
+
+// ═══════════════════════════════════════════════
+// RENDER ALERTS
+// ═══════════════════════════════════════════════
+function renderAlerts(results) {
+  const list = document.getElementById('alertList');
+  if (results.length === 0) { list.innerHTML = '<div class="empty-state">暫無資料</div>'; return; }
+
+  list.innerHTML = results.map(r => {
+    if (r.status === 'arrived') {
+      return `<div class="alert-item arrived">
+        <div class="alert-item-bus">✅ ${r.bus.busNo} 路</div>
+        <div class="alert-item-detail">🎉 已抵達 ${STATE.nearestStop?.stopName || '您的站牌'}</div>
+      </div>`;
+    }
+    if (r.status === 'alert' || r.status === 'close') {
+      const cls = r.stopsAway <= 2 ? 'close' : '';
+      return `<div class="alert-item ${cls}">
+        <div class="alert-item-bus">🔔 ${r.bus.busNo} 路（${r.bus.dir === 0 ? '去程' : '返程'}）</div>
+        <div class="alert-item-detail">⚠️ 距您還有 <strong>${r.stopsAway}</strong> 站</div>
+        <div class="alert-item-stop">📍 目前位置：${r.currentStopName || '計算中…'}</div>
+        ${renderStopProgress(r)}
+      </div>`;
+    }
+    if (r.status === 'normal') {
+      return `<div class="alert-item" style="background:#f8faff; border-color:var(--border)">
+        <div class="alert-item-bus" style="color:var(--primary)">🚌 ${r.bus.busNo} 路（${r.bus.dir === 0 ? '去程' : '返程'}）</div>
+        <div class="alert-item-detail">距您還有 ${r.stopsAway} 站</div>
+        <div class="alert-item-stop">📍 目前位置：${r.currentStopName || '計算中…'}</div>
+      </div>`;
+    }
+    if (r.status === 'waiting') {
+      const etaText = r.eta !== null ? `約 ${r.eta} 分鐘後到站` : '計算中…';
+      return `<div class="alert-item" style="background:#f8faff; border-color:var(--border)">
+        <div class="alert-item-bus" style="color:var(--primary)">🚌 ${r.bus.busNo} 路</div>
+        <div class="alert-item-detail">預估到站時間：${etaText}</div>
+      </div>`;
+    }
+    if (r.status === 'error') {
+      return `<div class="alert-item" style="background:#fff8e1; border-color:#ffc107">
+        <div class="alert-item-bus" style="color:#856404">⚠️ ${r.bus.busNo} 路</div>
+        <div class="alert-item-detail" style="color:#856404">資料取得失敗</div>
+      </div>`;
+    }
+    return '';
+  }).join('');
+}
+
+function renderStopProgress(r) {
+  const stopsAway = r.stopsAway || 0;
+  const total = Math.min(stopsAway + 2, 10);
+  let html = '<div class="stops-progress" style="margin-top:8px">';
+  for (let i = 0; i < total; i++) {
+    const isPassed = i < total - stopsAway - 1;
+    const isCurrent = i === total - stopsAway - 1;
+    const isUser = i === total - 1;
+    html += `<div class="stop-dot ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''} ${isUser ? 'user' : ''}"></div>`;
+    if (i < total - 1) html += `<div class="stop-line ${isPassed ? 'passed' : ''}"></div>`;
+  }
+  html += '</div>';
+  html += `<div style="font-size:0.75rem; color:var(--text-muted); margin-top:3px">🟠 公車目前位置 ｜ 🔴 您的站牌</div>`;
+  return html;
+}
+
+// ═══════════════════════════════════════════════
+// SPEECH & ALERT
+// ═══════════════════════════════════════════════
+function announceApproaching(busNo, stopsAway, currentStop) {
+  const msg = `${busNo}路公車目前已經到達${currentStop}，距離您的站牌還有${stopsAway}站，請準備上車`;
+  queueSpeech(msg, busNo, stopsAway, currentStop);
+  vibrate();
+}
+
+function announceArrived(busNo, stopName) {
+  const msg = `${busNo}路公車已經到達${stopName}，請立刻準備上車`;
+  queueSpeech(msg, busNo, 0, stopName);
+  vibrate([200, 100, 200, 100, 400]);
+  showAlertOverlay(busNo, stopName);
+}
+
+function queueSpeech(text, busNo, stopsAway, stopName) {
+  STATE.speechQueue.push({ text, busNo, stopsAway, stopName });
+  if (!STATE.isSpeaking) processSpeechQueue();
+}
+
+function processSpeechQueue() {
+  if (STATE.speechQueue.length === 0) { STATE.isSpeaking = false; return; }
+  STATE.isSpeaking = true;
+  const item = STATE.speechQueue.shift();
+
+  if (!window.speechSynthesis) {
+    showToast('🔊 ' + item.text);
+    STATE.isSpeaking = false;
+    processSpeechQueue();
+    return;
+  }
+
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(item.text);
+  utt.lang = 'zh-TW';
+  utt.rate = 0.85;
+  utt.pitch = 1.0;
+  utt.volume = 1.0;
+
+  // Prefer a Taiwanese Mandarin voice if available
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.lang === 'zh-TW') || voices.find(v => v.lang.startsWith('zh'));
+  if (preferred) utt.voice = preferred;
+
+  utt.onend = () => {
+    STATE.isSpeaking = false;
+    setTimeout(processSpeechQueue, 500);
+  };
+  utt.onerror = () => {
+    STATE.isSpeaking = false;
+    setTimeout(processSpeechQueue, 500);
+  };
+
+  window.speechSynthesis.speak(utt);
+}
+
+function testSpeech() {
+  queueSpeech('測試語音，650路公車目前已經到達台北車站，距離您的站牌還有3站，請準備上車', '650', 3, '台北車站');
+}
+
+function vibrate(pattern) {
+  if ('vibrate' in navigator) {
+    navigator.vibrate(pattern || [300, 100, 300]);
+  }
+}
+
+function testVibrate() { vibrate([200, 100, 200, 100, 400]); showToast('📳 震動測試'); }
+
+function showAlertOverlay(busNo, stopName) {
+  document.getElementById('overlayTitle').textContent = `🚌 ${busNo}路公車到站！`;
+  document.getElementById('overlayMsg').textContent = `${busNo}路公車已抵達「${stopName}」\n請立刻準備上車！`;
+  document.getElementById('alertOverlay').classList.add('show');
+  setStatus('alert', '🚨', `${busNo}路已到達 ${stopName}！`);
+}
+
+function dismissOverlay() {
+  document.getElementById('alertOverlay').classList.remove('show');
+  if (STATE.monitoring) setStatus('monitoring', '🟢', `監控中 ｜ 等待站：${STATE.nearestStop?.stopName || ''}`);
+}
+
+// ═══════════════════════════════════════════════
+// FAVORITES
+// ═══════════════════════════════════════════════
+function saveFavorite() {
+  if (STATE.buses.length === 0) { showToast('請先加入公車路線'); return; }
+  const favs = JSON.parse(localStorage.getItem('favorites') || '[]');
+  const entry = {
+    id: Date.now(),
+    city: STATE.city,
+    buses: STATE.buses.map(b => ({ busNo: b.busNo, dir: b.dir, routeId: b.routeId })),
+    label: STATE.buses.map(b => `${b.busNo}${b.dir === 0 ? '↗' : '↙'}`).join('、'),
+    savedAt: new Date().toLocaleDateString('zh-TW'),
+  };
+  favs.push(entry);
+  localStorage.setItem('favorites', JSON.stringify(favs));
+  renderFavoritesList();
+  showToast('⭐ 已儲存為常用路線');
+}
+
+function loadFavorites() { renderFavoritesList(); }
+
+function renderFavoritesList() {
+  const favs = JSON.parse(localStorage.getItem('favorites') || '[]');
+  const container = document.getElementById('favList');
+  if (favs.length === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="big-icon">⭐</div>尚未儲存任何常用路線</div>';
+    return;
+  }
+  container.innerHTML = favs.map(f => `
+    <div class="fav-item" onclick="loadFavorite(${f.id})">
+      <span class="fav-icon">🚌</span>
+      <div class="fav-info">
+        <div class="fav-buses">${f.label}</div>
+        <div class="fav-detail">${f.city === 'Taipei' ? '台北市' : '新北市'} ｜ 儲存於 ${f.savedAt}</div>
+      </div>
+      <button class="fav-del" onclick="event.stopPropagation(); deleteFavorite(${f.id})">🗑️</button>
+    </div>
+  `).join('');
+}
+
+async function loadFavorite(id) {
+  const favs = JSON.parse(localStorage.getItem('favorites') || '[]');
+  const fav = favs.find(f => f.id === id);
+  if (!fav) return;
+  closeModal('favoritesModal');
+  STATE.buses = [];
+  STATE.arrivedBuses.clear();
+  STATE.lastAlertState = {};
+  document.getElementById('citySelect').value = fav.city;
+  STATE.city = fav.city;
+  showToast('⏳ 載入常用路線中…');
+  for (const b of fav.buses) {
+    document.getElementById('busInput').value = b.busNo;
+    document.getElementById('dirSelect').value = b.dir;
+    _selectedDir = b.dir;  // set direction directly for favorites load
+    await addBus();
+  }
+}
+
+function deleteFavorite(id) {
+  let favs = JSON.parse(localStorage.getItem('favorites') || '[]');
+  favs = favs.filter(f => f.id !== id);
+  localStorage.setItem('favorites', JSON.stringify(favs));
+  renderFavoritesList();
+}
+
+// ═══════════════════════════════════════════════
+// WAKE LOCK
+// ═══════════════════════════════════════════════
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      STATE.wakeLock = await navigator.wakeLock.request('screen');
+      STATE.wakeLock.addEventListener('release', () => {
+        if (STATE.monitoring) requestWakeLock();
+      });
+    }
+  } catch (e) { /* not supported, ignore */ }
+}
+
+function releaseWakeLock() {
+  if (STATE.wakeLock) { STATE.wakeLock.release(); STATE.wakeLock = null; }
+}
+
+// ═══════════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════════
+function setStatus(type, icon, text) {
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status-bar ' + type;
+  document.getElementById('statusIcon').textContent = icon;
+  document.getElementById('statusText').textContent = text;
+}
+
+function openSettings() {
+  document.getElementById('settingClientId').value = localStorage.getItem('tdx_client_id') || '';
+  document.getElementById('settingClientSecret').value = localStorage.getItem('tdx_client_secret') || '';
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+function openFavorites() {
+  renderFavoritesList();
+  document.getElementById('favoritesModal').classList.add('open');
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-backdrop').forEach(bd => {
+  bd.addEventListener('click', (e) => { if (e.target === bd) bd.classList.remove('open'); });
+});
+
+let toastTimeout;
+function showToast(msg, duration) {
+  const container = document.getElementById('toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = msg;
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), duration || 3000);
+}
+
+function checkPWA() {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (!isStandalone && isIOS) {
+    document.getElementById('pwaBanner').classList.add('show');
+  }
+}
+</script>
 </body>
 </html>
