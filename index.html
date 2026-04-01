@@ -910,14 +910,35 @@ async function getToken() {
 
 async function tdxFetch(path) {
   const token = await getToken();
-  const res = await fetch(TDX_BASE + path, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Accept-Encoding': 'gzip',
-    },
+  // Ensure $format=JSON appended correctly
+  const hasQ = path.includes('?');
+  const fullUrl = TDX_BASE + path + (path.includes('$format') ? '' : (hasQ ? '&' : '?') + '$format=JSON');
+  const res = await fetch(fullUrl, {
+    headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`API 錯誤 ${res.status}`);
+  if (!res.ok) {
+    let errDetail = '';
+    try { errDetail = await res.text(); } catch(_) {}
+    throw new Error(`API 錯誤 ${res.status}` + (errDetail ? '：' + errDetail.slice(0,100) : ''));
+  }
   return res.json();
+}
+
+// Search route — auto-fallback to other city if not found
+async function tdxFetchRoute(busNo, selectedCity) {
+  const cities = selectedCity === 'Taipei' ? ['Taipei', 'NewTaipei'] : ['NewTaipei', 'Taipei'];
+  const busNoTrim = busNo.trim();
+  for (const city of cities) {
+    try {
+      const data = await tdxFetch(`/v2/Bus/Route/City/${city}/${encodeURIComponent(busNoTrim)}?$format=JSON`);
+      if (!Array.isArray(data) || data.length === 0) continue;
+      // Flexible match: exact first, then partial
+      let route = data.find(r => (r.RouteName?.Zh_tw || '').trim() === busNoTrim);
+      if (!route) route = data.find(r => (r.RouteName?.Zh_tw || '').trim().includes(busNoTrim));
+      if (route) return { route, city, allData: data };
+    } catch(e) { console.warn('Lookup failed for city', city, e.message); }
+  }
+  throw new Error(`找不到「${busNoTrim}」路線，請確認公車號碼及所屬城市`);
 }
 
 // ═══════════════════════════════════════════════
@@ -962,11 +983,13 @@ function startGPS() {
 // ═══════════════════════════════════════════════
 let _selectedDir = null;
 let _lookedUpRoutes = [];  // cache of both directions from last lookup
+let _foundCity = null;       // city where route was actually found
 
 function onBusInputChange() {
   // Reset direction selection when bus number changes
   _selectedDir = null;
   _lookedUpRoutes = [];
+  _foundCity = null;
   document.getElementById('dirCards').style.display = 'none';
   document.getElementById('routeInfo').style.display = 'none';
   const addBtn = document.getElementById('addBusBtn');
@@ -985,15 +1008,18 @@ async function lookupDirections() {
   _selectedDir = null;
 
   try {
-    const data = await tdxFetch(
-      `/v2/Bus/Route/City/${city}/${encodeURIComponent(busNo)}?$format=JSON`
-    );
+    const { route, city: foundCity, allData } = await tdxFetchRoute(busNo, city);
 
-    const routes = data.filter(r => r.RouteName.Zh_tw === busNo);
-    if (!routes || routes.length === 0) throw new Error(`找不到 ${busNo} 路線`);
+    // Auto-switch city selector if route found in other city
+    if (foundCity !== city) {
+      document.getElementById('citySelect').value = foundCity;
+      STATE.city = foundCity;
+      showToast(`ℹ️ 在${foundCity === 'Taipei' ? '台北市' : '新北市'}找到此路線`);
+    }
 
-    _lookedUpRoutes = routes;
-    renderDirectionCards(routes, busNo);
+    _lookedUpRoutes = allData;
+    _foundCity = foundCity;
+    renderDirectionCards([route], busNo, route);
 
     btn.innerHTML = '✅ 查詢完成';
     setTimeout(() => { btn.innerHTML = '🔍 查詢'; btn.disabled = false; }, 2000);
@@ -1004,14 +1030,13 @@ async function lookupDirections() {
   }
 }
 
-function renderDirectionCards(routes, busNo) {
+function renderDirectionCards(routes, busNo, routeObj) {
   const grid = document.getElementById('dirCardGrid');
 
-  // Build direction 0 and direction 1 options
-  // Most routes have one entry with both DepartureStop and DestinationStop
-  const route = routes[0];
-  const dep = route.DepartureStopNameZh || '起站';
-  const dest = route.DestinationStopNameZh || '終站';
+  // Use passed routeObj if available, else first item
+  const route = routeObj || routes[0];
+  const dep = route.DepartureStopNameZh || route.DepartureStopNameEn || '起站';
+  const dest = route.DestinationStopNameZh || route.DestinationStopNameEn || '終站';
 
   const cards = [
     {
@@ -1101,17 +1126,20 @@ async function addBus() {
 
   showToast('⏳ 載入路線資料中…');
   try {
-    const routeData = await tdxFetch(
-      `/v2/Bus/Route/City/${city}/${encodeURIComponent(busNo)}?$format=JSON`
-    );
-    const route = routeData.find(r => r.RouteName.Zh_tw === busNo);
-    if (!route) throw new Error(`找不到 ${busNo} 路線`);
+    // Use cached city from lookup, or re-fetch with fallback
+    const lookupCity = typeof _foundCity !== 'undefined' && _foundCity ? _foundCity : city;
+    const { route, city: foundCity } = await tdxFetchRoute(busNo, lookupCity);
 
     // Get stop list
     const stopsData = await tdxFetch(
-      `/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(busNo)}?$format=JSON`
+      `/v2/Bus/StopOfRoute/City/${foundCity}/${encodeURIComponent(busNo)}?$format=JSON`
     );
-    const stopRoute = stopsData.find(s => s.RouteName.Zh_tw === busNo && s.Direction === dir);
+    const busNoTrim = busNo.trim();
+    const stopRoute = stopsData.find(s =>
+      (s.RouteName?.Zh_tw || '').trim() === busNoTrim && s.Direction === dir
+    ) || stopsData.find(s =>
+      (s.RouteName?.Zh_tw || '').trim().includes(busNoTrim) && s.Direction === dir
+    );
     const stops = stopRoute ? stopRoute.Stops : [];
 
     const depStop = route.DepartureStopNameZh || '—';
@@ -1120,7 +1148,7 @@ async function addBus() {
     const busEntry = {
       busNo,
       dir,
-      city,
+      city: foundCity,
       routeId: route.RouteUID,
       routeName: route.RouteName.Zh_tw,
       startStop: dir === 0 ? depStop : destStop,
