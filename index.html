@@ -558,16 +558,32 @@ input:focus,select:focus{border-color:var(--P);}
 
       <div class="divider"></div>
 
+      <div class="form-row">
+        <label>🔔 背景通知測試</label>
+        <div id="notifStatus" style="font-size:0.82rem;margin-bottom:8px;padding:9px 12px;border-radius:var(--Rs);background:var(--BG);border:1.5px solid var(--BD)">
+          讀取中…
+        </div>
+        <button class="btn btn-P" onclick="testNotification()" id="testNotifBtn">
+          🔔 發送測試通知（3秒後觸發）
+        </button>
+        <div style="font-size:0.75rem;color:var(--TX2);margin-top:6px;line-height:1.5">
+          按下後請立刻將手機放到桌上或切換到其他 App，<br>3秒後應聽到通知聲音。
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div style="font-size:0.8rem;color:var(--TX2);line-height:1.8" id="setupGuide">
+        <strong>📱 背景提醒設定步驟（重要）</strong><br>
+      </div>
+
+      <div class="divider"></div>
+
       <div style="font-size:0.8rem;color:var(--TX2);line-height:1.8">
-        <strong>背景執行說明</strong><br>
-        • iOS：加入主畫面後系統通知可在背景作用<br>
-        • Android Chrome：保持頁籤開啟支援背景通知<br>
-        • 電腦版：保持瀏覽器頁籤開啟即可<br>
-        • 螢幕常亮：Chrome/Edge 支援，Safari 請手動設定<br><br>
         <strong>API 呼叫頻率</strong><br>
         • 無公車在範圍內：每 60 秒更新<br>
-        • 公車進入提醒範圍：每 20 秒更新<br>
-        • 公車距離 2 站內：每 10 秒更新
+        • 公車進入提醒範圍：每 30 秒更新<br>
+        • 公車距離 2 站內：每 15 秒更新
       </div>
     </div>
   </div>
@@ -654,6 +670,7 @@ const S = {
   lastAlert:{}, arrived:new Set(),
   speechQueue:[], speaking:false, audioUnlocked:false,
   wakeLock:null,
+  swReg:null,  // ServiceWorkerRegistration — stored on init
   pendingRoute:null, pendingDir:null,
   kbuf:'',
 };
@@ -665,7 +682,21 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPrefs();
   renderFavList();
   checkPWA();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(reg => {
+        S.swReg = reg;
+        // Also store when SW becomes active later
+        reg.addEventListener('updatefound', () => {
+          reg.installing?.addEventListener('statechange', () => {
+            if (reg.active) S.swReg = reg;
+          });
+        });
+      })
+      .catch(() => {});
+    // In case SW is already controlling (returning visit)
+    navigator.serviceWorker.ready.then(reg => { S.swReg = reg; });
+  }
   acquireWakeLock();
   startGPS();
   checkNotifPerm();
@@ -1535,50 +1566,162 @@ function dismissOverlay() { document.getElementById('overlay').classList.remove(
 ══════════════════════════════════════════ */
 function checkNotifPerm() {
   if (!('Notification' in window)) return;
-  if (Notification.permission==='default') {
-    document.getElementById('notifBanner').style.display='flex';
+  if (Notification.permission === 'default') {
+    document.getElementById('notifBanner').style.display = 'flex';
   }
+  // Update status display (will run after SW ready)
+  navigator.serviceWorker?.ready.then(reg => {
+    S.swReg = reg;
+    updateNotifStatus();
+  });
 }
 
 async function requestNotifPerm() {
   if (!('Notification' in window)) { toast('此裝置不支援通知'); return; }
-  const perm=await Notification.requestPermission();
-  document.getElementById('notifBanner').style.display='none';
-  if (perm==='granted') {
-    toast('✅ 通知已允許，背景時可收到公車提醒');
-    // Register SW for push
+  const perm = await Notification.requestPermission();
+  document.getElementById('notifBanner').style.display = 'none';
+  updateNotifStatus();
+  if (perm === 'granted') {
+    toast('✅ 通知已允許！');
+    // Ensure SW is ready
     if (navigator.serviceWorker) {
-      const reg=await navigator.serviceWorker.ready;
-      // Ping SW
-      reg.active?.postMessage({type:'INIT'});
+      const reg = await navigator.serviceWorker.ready;
+      S.swReg = reg;
     }
   } else {
-    toast('通知未允許，背景時將以震動提醒');
+    toast('⚠️ 通知未允許，手機在口袋時將無法提醒');
   }
 }
 
-function sendNotif(title, body, requireInteraction) {
-  // Via service worker (works in background on Android)
-  if (navigator.serviceWorker?.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type:'BUS_ALERT', title, body,
-      requireInteraction:!!requireInteraction,
-    });
+function updateNotifStatus() {
+  const el = document.getElementById('notifStatus');
+  if (!el) return;
+
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone;
+  const hasSW = 'serviceWorker' in navigator;
+  const notifSupported = 'Notification' in window;
+  const perm = notifSupported ? Notification.permission : 'unsupported';
+  const swReady = !!S.swReg;
+
+  let lines = [];
+  let allGood = true;
+
+  // Step 1: PWA installed?
+  if (isIOS) {
+    if (isStandalone) {
+      lines.push('✅ 已加入主畫面（PWA 模式）');
+    } else {
+      lines.push('❌ 尚未加入主畫面 → 通知功能無法在背景作用');
+      allGood = false;
+    }
+  }
+
+  // Step 2: Notification permission
+  if (!notifSupported) {
+    lines.push('⚠️ 此瀏覽器不支援通知 API');
+    allGood = false;
+  } else if (perm === 'granted') {
+    lines.push('✅ 通知權限已允許');
+  } else if (perm === 'denied') {
+    lines.push('❌ 通知已被封鎖 → 請至手機設定 > 通知 開啟');
+    allGood = false;
+  } else {
+    lines.push('⚠️ 尚未允許通知 → 請點上方「允許通知」');
+    allGood = false;
+  }
+
+  // Step 3: SW ready?
+  if (hasSW) {
+    lines.push(swReady ? '✅ 背景服務已就緒' : '⏳ 背景服務啟動中…');
+    if (!swReady) allGood = false;
+  }
+
+  const color = allGood ? 'var(--SUC-BG)' : '#fff8e1';
+  const border = allGood ? 'var(--SUC-BD)' : '#ffc107';
+  el.style.background = color;
+  el.style.borderColor = border;
+  el.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+
+  // Update setup guide
+  renderSetupGuide(isIOS, isStandalone, perm);
+}
+
+function renderSetupGuide(isIOS, isStandalone, perm) {
+  const el = document.getElementById('setupGuide');
+  if (!el) return;
+
+  let steps = [];
+  if (isIOS && !isStandalone) {
+    steps.push('① 點 Safari 下方的 <strong>分享按鈕</strong>（□↑）');
+    steps.push('② 選擇「<strong>加入主畫面</strong>」並確認');
+    steps.push('③ 從主畫面開啟此 App');
+  }
+  if (perm !== 'granted') {
+    steps.push(steps.length === 0 ? '① 允許通知權限（點上方按鈕）' : `④ 允許通知權限`);
+  }
+
+  if (steps.length === 0) {
+    el.innerHTML = '<strong>✅ 背景提醒已完整設定，公車快到時您將聽到通知音效</strong>';
+    el.style.color = 'var(--SUC)';
+  } else {
+    el.innerHTML = '<strong>📱 請完成以下步驟才能在背景收到提醒：</strong><br>'
+      + steps.map(s => `• ${s}`).join('<br>');
+    el.style.color = 'var(--TX2)';
+  }
+}
+
+async function testNotification() {
+  const btn = document.getElementById('testNotifBtn');
+
+  // Request permission if needed
+  if (Notification.permission === 'default') {
+    await requestNotifPerm();
+  }
+  if (Notification.permission !== 'granted') {
+    toast('❌ 請先允許通知權限');
     return;
   }
-  // Direct notification (foreground fallback)
-  if (Notification.permission==='granted') {
-    try {
-      new Notification(title, {
-        body,
-        icon:'./icon-192.png',
-        vibrate:requireInteraction?[200,100,200,100,400]:[300,100,300],
-        requireInteraction:!!requireInteraction,
-        tag:'bus-alert',
-        renotify:true,
-      });
-    } catch(e){}
+
+  btn.textContent = '⏳ 3 秒後觸發…';
+  btn.disabled = true;
+
+  // Wait 3 seconds so user can switch apps
+  setTimeout(async () => {
+    await sendNotif(
+      '🚌 測試：基隆路幹線快到了！',
+      '基隆路幹線目前已到達台北車站，距離您的站牌還有 3 站，請準備上車',
+      false
+    );
+    btn.textContent = '🔔 發送測試通知（3秒後觸發）';
+    btn.disabled = false;
+  }, 3000);
+}
+
+async function sendNotif(title, body, requireInteraction) {
+  if (Notification.permission !== 'granted') return;
+
+  const opts = {
+    body,
+    icon: './icon-192.png',
+    badge: './icon-72.png',
+    // vibrate is honoured by Android; iOS ignores it but shows sound+banner
+    vibrate: requireInteraction ? [200,100,200,100,400] : [300,100,300],
+    requireInteraction: !!requireInteraction,
+    tag: 'bus-alert',
+    renotify: true,
+    silent: false,   // explicitly request sound on iOS
+  };
+
+  // Preferred: use SW registration — works in foreground AND background
+  const reg = S.swReg || (await navigator.serviceWorker?.ready.catch(()=>null));
+  if (reg) {
+    try { await reg.showNotification(title, opts); return; } catch(e) {}
   }
+
+  // Fallback: direct Notification API (foreground only)
+  try { new Notification(title, opts); } catch(e) {}
 }
 
 /* ══════════════════════════════════════════
@@ -1666,6 +1809,8 @@ function openSettings(){
   document.getElementById('cfgId').value=ls('tdx_id')||'';
   document.getElementById('cfgSecret').value=ls('tdx_sec')||'';
   updateCacheStatus();
+  // Small delay so SW.swReg can be populated
+  setTimeout(updateNotifStatus, 200);
   document.getElementById('settingsModal').classList.add('open');
 }
 function openFavs(){ renderFavList(); document.getElementById('favsModal').classList.add('open'); }

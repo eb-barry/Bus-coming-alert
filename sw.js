@@ -1,5 +1,6 @@
-// Service Worker - 公車快到了 v3
-const CACHE = 'bus-alert-v3';
+// Service Worker - 公車快到了 v4
+// Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
+const CACHE = 'bus-alert-v4';
 const STATIC = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
@@ -9,13 +10,16 @@ self.addEventListener('install', e => {
 
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(ks => Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
+    caches.keys().then(ks =>
+      Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  // Never cache TDX API calls
   if (url.hostname.includes('tdx.transportdata.tw')) {
     e.respondWith(fetch(e.request));
     return;
@@ -24,6 +28,8 @@ self.addEventListener('fetch', e => {
 });
 
 // Handle messages from main thread
+// Note: main thread now calls reg.showNotification() directly,
+// so this handler is only needed for legacy postMessage path
 self.addEventListener('message', e => {
   if (!e.data) return;
 
@@ -31,29 +37,29 @@ self.addEventListener('message', e => {
     e.ports?.[0]?.postMessage({ type: 'ACK' });
   }
 
-  // Bus alert notification — used when app is in background
+  // Legacy path — kept for compatibility
   if (e.data.type === 'BUS_ALERT') {
     const { title, body, requireInteraction } = e.data;
     self.registration.showNotification(title, {
       body,
       icon: './icon-192.png',
       badge: './icon-72.png',
-      vibrate: requireInteraction
-        ? [200, 100, 200, 100, 400]
-        : [300, 100, 300],
+      vibrate: requireInteraction ? [200, 100, 200, 100, 400] : [300, 100, 300],
       tag: 'bus-alert',
       renotify: true,
       requireInteraction: !!requireInteraction,
-      data: { url: './' },
+      silent: false,
     }).catch(() => {});
   }
 });
 
-// Tap notification → bring app to focus
+// Tap notification → bring app to front
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const focused = list.find(c => c.focused);
+      if (focused) return focused.focus();
       if (list.length > 0) return list[0].focus();
       return clients.openWindow('./');
     })
