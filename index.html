@@ -408,12 +408,16 @@ input:focus,select:focus{border-color:var(--P);}
       <button class="kbd-key"              onclick="kp('7')">7</button>
       <button class="kbd-key"              onclick="kp('8')">8</button>
       <button class="kbd-key"              onclick="kp('9')">9</button>
+      <!-- Row 3b: 7 8 9 + CLR -->
       <!-- Row 4 -->
-      <button class="kbd-key special" onclick="kp('幹')">幹線</button>
+      <button class="kbd-key special" onclick="openTrunkPicker()">幹線</button>
       <button class="kbd-key special" onclick="kp('F')">F</button>
       <button class="kbd-key"         onclick="kp('0')">0</button>
       <button class="kbd-key del"     onclick="kbDel()">⌫</button>
-      <button class="kbd-key search-btn" onclick="doLookup()">🔍 查詢</button>
+      <button class="kbd-key del" style="font-size:0.8rem" onclick="kbClear()">清除</button>
+      <!-- Row 5: search + add-to-queue -->
+      <button class="kbd-key search-btn" style="grid-column:span 3" onclick="doLookup()">🔍 查詢</button>
+      <button class="kbd-key" style="grid-column:span 2;background:#2d6a4f;color:#fff;border-color:#2d6a4f;font-size:0.82rem" id="kbdAddBtn" onclick="queueBus()" disabled>➕ 加入監控</button>
     </div>
 
     <!-- Direction selection -->
@@ -425,11 +429,28 @@ input:focus,select:focus{border-color:var(--P);}
     <!-- Confirm card -->
     <div id="confirmCard" style="display:none"></div>
 
-    <!-- Add button -->
-    <button class="btn btn-P" id="addBtn" onclick="addBus()" disabled style="margin-top:4px">
-      ➕ 加入監控
-    </button>
+  </div>
+</div>
 
+<!-- Trunk line picker bottom sheet -->
+<div class="trunk-picker" id="trunkPicker">
+  <div class="trunk-sheet">
+    <div class="trunk-title">
+      <span>🚌 選擇幹線公車</span>
+      <button style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--TX2)" onclick="closeTrunkPicker()">✕</button>
+    </div>
+    <div class="trunk-list" id="trunkList"></div>
+  </div>
+</div>
+
+<!-- Queue + Start monitoring section -->
+<div class="sec" id="queueSec" style="display:none">
+  <div class="sec-hd">📋 待監控清單</div>
+  <div class="sec-bd">
+    <div class="queue-list" id="queueList"></div>
+    <button class="btn btn-red" id="startBtn" onclick="startMonitorFromQueue()">
+      🔴 開始監控
+    </button>
   </div>
 </div>
 
@@ -607,24 +628,34 @@ const TDX_BASE  = 'https://tdx.transportdata.tw/api/basic';
 const STOP_TTL  = 7 * 24 * 3600 * 1000;
 const ROUTE_TTL = 24 * 3600 * 1000;
 
-// Dynamic refresh intervals (ms)
-const INTERVAL_FAR   = 60000;  // > alertStops away
-const INTERVAL_NEAR  = 20000;  // within alertStops
-const INTERVAL_CLOSE = 10000;  // ≤ 2 stops
+// Dynamic refresh intervals (ms) — tuned for TDX 5 calls/min limit
+const INTERVAL_FAR   = 60000;  // > alertStops: 60s (safe for any number of routes)
+const INTERVAL_NEAR  = 30000;  // within alertStops: 30s
+const INTERVAL_CLOSE = 15000;  // ≤ 2 stops: 15s
+
+// API rate limiter: max 4 calls/min (leave 1 buffer)
+const API_RATE = { calls:[], MAX:4, WINDOW:60000 };
+function canCall() {
+  const now = Date.now();
+  API_RATE.calls = API_RATE.calls.filter(t => now - t < API_RATE.WINDOW);
+  return API_RATE.calls.length < API_RATE.MAX;
+}
+function markCall() { API_RATE.calls.push(Date.now()); }
 
 /* ══════════════════════════════════════════
    STATE
 ══════════════════════════════════════════ */
 const S = {
-  buses:[], lat:null, lng:null, gpsWid:null,
+  busQueue:[],   // routes waiting to be monitored (user added but not started)
+  buses:[],      // actively monitored routes
+  lat:null, lng:null, gpsWid:null,
   monitoring:false, token:null, tokenExp:0,
   timerId:null, countdown:60, currentInterval:INTERVAL_FAR,
   lastAlert:{}, arrived:new Set(),
-  queue:[], speaking:false, audioUnlocked:false,
+  speechQueue:[], speaking:false, audioUnlocked:false,
   wakeLock:null,
   pendingRoute:null, pendingDir:null,
-  // Keyboard state
-  kbuf:'',   // raw key buffer
+  kbuf:'',
 };
 
 /* ══════════════════════════════════════════
@@ -645,6 +676,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.mbd').forEach(bd =>
     bd.addEventListener('click', e => { if (e.target===bd) bd.classList.remove('open'); })
   );
+  document.getElementById('trunkPicker')?.addEventListener('click', e => {
+    if (e.target===document.getElementById('trunkPicker')) closeTrunkPicker();
+  });
   updateCacheStatus();
 });
 
@@ -751,10 +785,61 @@ function kp(ch) {
 function kbDel() {
   S.kbuf = S.kbuf.slice(0,-1);
   updateKbDisplay();
+  resetLookup();
+}
+
+function kbClear() {
+  S.kbuf = '';
+  updateKbDisplay();
+  resetLookup();
+  toast('已清除');
+}
+
+function resetLookup() {
   S.pendingRoute=null; S.pendingDir=null;
   document.getElementById('dirSection').style.display='none';
   document.getElementById('confirmCard').style.display='none';
-  document.getElementById('addBtn').disabled=true;
+  const ab = document.getElementById('kbdAddBtn');
+  if (ab) { ab.disabled=true; ab.style.opacity='0.45'; }
+}
+
+/* ── Trunk line picker ── */
+// Lines with no numeric predecessor — shown when user presses 幹線 key
+const UNNAMED_TRUNKS = [
+  { name:'松江新生幹線', route:'松江新生幹線', desc:'松江路↔新生南北路' },
+  { name:'復興幹線',     route:'復興幹線',     desc:'復興南北路' },
+  { name:'東環幹線',     route:'東環幹線',     desc:'東側環狀路線' },
+  { name:'南環幹線',     route:'南環幹線',     desc:'南側環狀路線' },
+  { name:'北環幹線',     route:'北環幹線',     desc:'原620路' },
+  { name:'民生幹線',     route:'民生幹線',     desc:'民生東西路' },
+  { name:'民權幹線',     route:'民權幹線',     desc:'民權東西路' },
+  { name:'內湖幹線',     route:'內湖幹線',     desc:'原287路' },
+  { name:'重慶幹線',     route:'重慶幹線',     desc:'重慶南北路' },
+];
+
+function openTrunkPicker() {
+  const list = document.getElementById('trunkList');
+  list.innerHTML = UNNAMED_TRUNKS.map(t => `
+    <div class="trunk-item" onclick="selectTrunk('${t.route}')">
+      <span style="font-size:1.4rem">🚌</span>
+      <div>
+        <div class="ti-name">${t.name}</div>
+        <div class="ti-sub">${t.desc}</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('trunkPicker').classList.add('open');
+}
+
+function closeTrunkPicker() {
+  document.getElementById('trunkPicker').classList.remove('open');
+}
+
+function selectTrunk(routeName) {
+  closeTrunkPicker();
+  S.kbuf = routeName;
+  updateKbDisplay();
+  resetLookup();
+  toast(`已選擇：${routeName}，請按查詢`);
 }
 
 function updateKbDisplay() {
@@ -905,80 +990,130 @@ function selDir(dir,from,to) {
       <div class="cc-row" style="color:var(--SUC)">🟢 從 ${from}</div>
       <div class="cc-row" style="color:var(--ERR)">🔴 往 ${to}</div>
     </div>`;
-  document.getElementById('addBtn').disabled=false;
+  const ab = document.getElementById('kbdAddBtn');
+  if (ab) { ab.disabled=false; ab.style.opacity='1'; }
 }
 
 function esc(s){ return (s||'').replace(/'/g,"&#39;"); }
 
 /* ══════════════════════════════════════════
-   ADD / REMOVE BUS
+   QUEUE BUS (adds to queue, no monitoring yet)
 ══════════════════════════════════════════ */
-async function addBus() {
+async function queueBus() {
   if (!S.kbuf||S.pendingDir===null||!S.pendingRoute) { toast('請先查詢並選擇方向'); return; }
   unlockAudio();
 
   const {route,city,resolved}=S.pendingRoute;
   const dir=S.pendingDir;
   const tdxName=resolved.tdxName;
-  const userLabel=S.kbuf; // what user typed (e.g. "650")
+  const userLabel=S.kbuf;
 
-  if (S.buses.find(b=>b.tdxName===tdxName&&b.dir===dir)) { toast('此路線已在清單中'); return; }
-  if (S.buses.length>=8) { toast('最多同時監控 8 條路線'); return; }
+  // Check duplicates across both queue and active buses
+  const allRoutes=[...S.busQueue,...S.buses];
+  if (allRoutes.find(b=>b.tdxName===tdxName&&b.dir===dir)) { toast('此路線已在清單中'); return; }
+  if (allRoutes.length>=8) { toast('最多同時監控 8 條路線'); return; }
 
-  const btn=document.getElementById('addBtn');
-  btn.innerHTML='<span class="sp"></span> 載入站牌…'; btn.disabled=true;
+  const btn=document.getElementById('kbdAddBtn');
+  if (btn) { btn.innerHTML='<span class="sp"></span>'; btn.disabled=true; }
 
   try {
     const stops=await fetchStops(city,tdxName,dir);
-    const dep  =route.DepartureStopNameZh  ||'—';
-    const dest =route.DestinationStopNameZh ||'—';
+    const dep=route.DepartureStopNameZh||'—';
+    const dest=route.DestinationStopNameZh||'—';
 
     const entry={
-      userLabel,      // "650" or "綠5" etc.
-      tdxName,        // TDX RouteName e.g. "基隆路幹線"
+      userLabel, tdxName,
       isMapped:resolved.isMapped,
-      dir, city,
-      routeId:route.RouteUID,
+      dir, city, routeId:route.RouteUID,
       startStop:dir===0?dep:dest,
-      endStop:  dir===0?dest:dep,
+      endStop:dir===0?dest:dep,
       stops, nearSeq:null,
     };
-    S.buses.push(entry);
-    if (S.lat) calcNearest(entry);
+    S.busQueue.push(entry);
 
     // Reset keyboard
-    S.kbuf='';
-    updateKbDisplay();
-    document.getElementById('dirSection').style.display='none';
-    document.getElementById('confirmCard').style.display='none';
-    S.pendingRoute=null; S.pendingDir=null;
-    btn.innerHTML='➕ 加入監控'; btn.disabled=true;
+    S.kbuf=''; updateKbDisplay();
+    resetLookup();
+    if (btn) { btn.innerHTML='➕ 加入監控'; btn.disabled=true; btn.style.opacity='0.45'; }
 
-    renderMonitor();
     const label=resolved.isMapped?`${tdxName}（${userLabel}路）`:userLabel;
-    toast(`✅ 已加入 ${label} 往 ${entry.endStop}`);
-
-    if (!S.monitoring) startMonitor();
-    else fetchAll();
+    toast(`✅ 已加入清單：${label} 往 ${entry.endStop}`);
+    renderQueue();
   } catch(e) {
     toast('❌ '+e.message);
-    btn.innerHTML='➕ 加入監控'; btn.disabled=false;
+    if (btn) { btn.innerHTML='➕ 加入監控'; btn.disabled=false; btn.style.opacity='1'; }
   }
 }
 
-function removeBus(i) {
+function removeFromQueue(i) {
+  const b=S.busQueue[i];
+  S.busQueue.splice(i,1);
+  renderQueue();
+  toast(`已從清單移除 ${b.userLabel}`);
+}
+
+function renderQueue() {
+  const sec=document.getElementById('queueSec');
+  const lst=document.getElementById('queueList');
+  if (!S.busQueue.length&&!S.buses.length) { sec.style.display='none'; return; }
+  sec.style.display='block';
+
+  // Show queue items (waiting to start)
+  lst.innerHTML=[
+    ...S.busQueue.map((b,i)=>`
+      <div class="queue-item">
+        <div style="font-size:1.1rem">🚌</div>
+        <div style="flex:1">
+          <div class="qi-name">${b.isMapped?b.tdxName:b.userLabel}</div>
+          <div class="qi-dir">${b.dir===0?'去程':'返程'} 往 ${b.endStop}</div>
+        </div>
+        <button class="qi-rm" onclick="removeFromQueue(${i})">✕</button>
+      </div>`),
+    ...S.buses.map((b,i)=>`
+      <div class="queue-item" style="background:var(--SUC-BG);border-color:var(--SUC-BD)">
+        <div style="font-size:1.1rem">📡</div>
+        <div style="flex:1">
+          <div class="qi-name" style="color:var(--SUC)">${b.isMapped?b.tdxName:b.userLabel}</div>
+          <div class="qi-dir">${b.dir===0?'去程':'返程'} 往 ${b.endStop} ｜ 監控中</div>
+        </div>
+        <button class="qi-rm" onclick="removeActiveBus(${i})">✕</button>
+      </div>`)
+  ].join('');
+
+  // Show/hide start button
+  const startBtn=document.getElementById('startBtn');
+  if (startBtn) {
+    startBtn.style.display=S.busQueue.length>0&&!S.monitoring?'flex':'none';
+  }
+}
+
+function startMonitorFromQueue() {
+  if (!S.busQueue.length) { toast('請先加入公車路線'); return; }
+  if (!S.lat) { toast('等待 GPS 定位中，請稍候'); return; }
+  // Move queue to active buses
+  for (const entry of S.busQueue) {
+    if (S.lat) calcNearest(entry);
+    S.buses.push(entry);
+  }
+  S.busQueue=[];
+  renderQueue();
+  renderMonitor();
+  startMonitor();
+}
+
+function removeActiveBus(i) {
   const b=S.buses[i];
   S.buses.splice(i,1);
   S.arrived.delete(b.tdxName+'_'+b.dir);
   delete S.lastAlert[b.tdxName+'_'+b.dir];
-  renderMonitor();
+  renderMonitor(); renderQueue();
   toast(`已移除 ${b.userLabel}`);
   if (S.buses.length===0) stopMonitor();
 }
 
 function clearAll() {
-  S.buses=[]; S.arrived.clear(); S.lastAlert={};
-  stopMonitor(); renderMonitor(); toast('已清除全部路線');
+  S.busQueue=[]; S.buses=[]; S.arrived.clear(); S.lastAlert={};
+  stopMonitor(); renderMonitor(); renderQueue(); toast('已清除全部路線');
 }
 
 /* ══════════════════════════════════════════
@@ -1046,7 +1181,7 @@ function stopMonitor() {
   if (S.timerId) { clearTimeout(S.timerId); S.timerId=null; }
   releaseWakeLock();
   window.speechSynthesis?.cancel();
-  S.queue=[]; S.speaking=false;
+  S.speechQueue=[]; S.speaking=false;
   document.getElementById('alertSec').style.display='none';
   document.getElementById('cdLbl').textContent='';
   document.getElementById('refreshBadge').style.display='none';
@@ -1093,17 +1228,22 @@ async function fetchAll() {
   if (!S.monitoring||!S.buses.length) return;
   const alertStops=parseInt(document.getElementById('alertStops').value);
   const results=[];
-  let minStopsAway=Infinity;  // track closest bus to set interval
+  let minStopsAway=Infinity;
 
   for (const bus of S.buses) {
     const key=bus.tdxName+'_'+bus.dir;
     if (S.arrived.has(key)) { results.push({bus,status:'arrived'}); continue; }
     try {
-      // Parallel fetch: ETA + real-time position
-      const [eta,rt]=await Promise.all([
-        apiFetch(`/v2/Bus/EstimatedTimeOfArrival/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`),
-        apiFetch(`/v2/Bus/RealTimeNearStop/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`),
-      ]);
+      // Rate limit guard — skip if too many calls recently
+      if (!canCall()) {
+        results.push({bus,status:'ratelimit'});
+        continue;
+      }
+      // Single API call: RealTimeNearStop only (saves 1 call vs parallel ETA+RT)
+      markCall();
+      const rt=await apiFetch(`/v2/Bus/RealTimeNearStop/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`);
+      // ETA only fetched when no real-time data found (lazy)
+      let eta=null;
 
       if (!bus.nearSeq&&S.lat) calcNearest(bus);
       const userSeq=bus.nearSeq;
@@ -1142,8 +1282,16 @@ async function fetchAll() {
           results.push({bus,away,curStop,status:'normal'});
         }
       } else {
-        const e=eta.find(e=>e.Direction===bus.dir&&e.StopSequence===userSeq);
-        const mins=e?Math.round(e.EstimatedArrivalTime/60):null;
+        // Lazy ETA fetch only when no real-time vehicle found
+        let mins=null;
+        if (canCall()) {
+          try {
+            markCall();
+            const etaData=await apiFetch(`/v2/Bus/EstimatedTimeOfArrival/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`);
+            const e=etaData.find(e=>e.Direction===bus.dir&&e.StopSequence===userSeq);
+            mins=e?Math.round(e.EstimatedArrivalTime/60):null;
+          } catch(_){}
+        }
         results.push({bus,mins,status:'waiting'});
       }
     } catch(e) {
@@ -1163,10 +1311,25 @@ async function fetchAll() {
   renderAlerts(results);
   renderBusTags();
 
-  // Check all arrived
+  // Auto-remove individually arrived routes after 8s (save API calls)
+  for (const bus of S.buses) {
+    const key=bus.tdxName+'_'+bus.dir;
+    if (S.arrived.has(key) && !bus._removeScheduled) {
+      bus._removeScheduled=true;
+      setTimeout(()=>{
+        const idx=S.buses.indexOf(bus);
+        if (idx>-1) { S.buses.splice(idx,1); renderMonitor(); renderQueue(); }
+        S.arrived.delete(key);
+        delete S.lastAlert[key];
+        if (S.buses.length===0) {
+          stopMonitor(); updateStatus(); toast('🎉 所有公車均已到站，監控自動結束');
+        }
+      }, 8000);
+    }
+  }
   const active=S.buses.filter(b=>!S.arrived.has(b.tdxName+'_'+b.dir));
-  if (S.buses.length>0&&active.length===0) {
-    setTimeout(()=>{ stopMonitor(); updateStatus(); toast('🎉 所有公車均已到站，監控結束'); },4000);
+  if (S.buses.length>0&&active.length===0&&S.buses.every(b=>b._removeScheduled)) {
+    // All being removed, handled above
   }
 }
 
@@ -1187,10 +1350,15 @@ function renderAlerts(results) {
     const b=r.bus;
     const dl=b.dir===0?'去程':'返程';
     const nm=b.isMapped?b.tdxName:b.userLabel;
+    if (r.status==='ratelimit') return `
+      <div class="ac" style="border-color:#ffc107;background:#fff8e1">
+        <div class="ac-bus" style="color:#856404">⏳ ${nm}</div>
+        <div class="ac-stop">API 呼叫頻率限制中，下次更新後顯示</div>
+      </div>`;
     if (r.status==='arrived') return `
       <div class="ac arrived">
         <div class="ac-bus c-suc">✅ ${nm}（${dl}）</div>
-        <div class="ac-detail">🎉 已抵達您的站牌，請上車！</div>
+        <div class="ac-detail">🎉 已抵達您的站牌，此路線監控已自動停止</div>
       </div>`;
     if (r.status==='close') return `
       <div class="ac close">
@@ -1246,11 +1414,12 @@ function renderMonitor() {
   const sec=document.getElementById('monSec');
   if (!S.buses.length) {
     sec.style.display='none';
-    document.getElementById('alertSec').style.display='none';
+    if (!S.busQueue.length) document.getElementById('alertSec').style.display='none';
     return;
   }
   sec.style.display='block';
   renderBusTags();
+  renderQueue();
 }
 
 function renderBusTags() {
@@ -1320,14 +1489,14 @@ function announceArrived(bus,stop) {
 }
 
 function speak(text) {
-  S.queue.push(text);
+  S.speechQueue.push(text);
   if (!S.speaking) drain();
 }
 
 function drain() {
-  if (!S.queue.length) { S.speaking=false; return; }
+  if (!S.speechQueue.length) { S.speaking=false; return; }
   S.speaking=true;
-  const text=S.queue.shift();
+  const text=S.speechQueue.shift();
   if (!window.speechSynthesis) { toast('🔊 '+text.slice(0,30)); S.speaking=false; drain(); return; }
   window.speechSynthesis.cancel();
   const go=()=>{
