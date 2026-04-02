@@ -810,7 +810,8 @@ function kp(ch) {
   S.pendingRoute=null; S.pendingDir=null;
   document.getElementById('dirSection').style.display='none';
   document.getElementById('confirmCard').style.display='none';
-  document.getElementById('addBtn').disabled=true;
+  const _rlab=document.getElementById('kbdAddBtn');
+  if (_rlab) { _rlab.disabled=true; _rlab.style.opacity='0.45'; }
 }
 
 function kbDel() {
@@ -969,7 +970,8 @@ async function doLookup() {
   qBtn.innerHTML='<span class="sp"></span>';
   qBtn.disabled=true;
   S.pendingRoute=null; S.pendingDir=null;
-  document.getElementById('addBtn').disabled=true;
+  const _ab=document.getElementById('kbdAddBtn');
+  if (_ab) { _ab.disabled=true; _ab.style.opacity='0.45'; }
 
   try {
     const {route,city}=await fetchRoute(resolved.tdxName);
