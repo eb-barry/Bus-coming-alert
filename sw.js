@@ -1,73 +1,60 @@
-// Service Worker - Bus Alert App
-const CACHE_NAME = 'bus-alert-v1';
-const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-];
+// Service Worker - 公車快到了 v3
+const CACHE = 'bus-alert-v3';
+const STATIC = ['./', './index.html', './manifest.json'];
 
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-  );
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(ks => Promise.all(ks.filter(k=>k!==CACHE).map(k=>caches.delete(k))))
   );
   self.clients.claim();
 });
 
-// Cache-first for static assets, network-first for API calls
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
-
-  // Let TDX API calls pass through (no cache)
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
   if (url.hostname.includes('tdx.transportdata.tw')) {
-    event.respondWith(fetch(event.request));
+    e.respondWith(fetch(e.request));
     return;
   }
-
-  // Cache-first for static assets
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
-  );
+  e.respondWith(caches.match(e.request).then(c => c || fetch(e.request)));
 });
 
-// Receive messages from main thread to keep alive
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'KEEP_ALIVE') {
-    event.ports[0]?.postMessage({ type: 'ACK' });
-  }
-  if (event.data && event.data.type === 'BUS_ALERT') {
-    // Show push notification when app is backgrounded
-    const { busNo, stopName, stopsAway } = event.data;
-    const title = stopsAway === 0 ? `🚌 ${busNo}路已到站！` : `⚠️ ${busNo}路快到了！`;
-    const body = stopsAway === 0
-      ? `${busNo}路公車已抵達「${stopName}」，請立刻上車！`
-      : `${busNo}路公車距離「${stopName}」還有 ${stopsAway} 站`;
+// Handle messages from main thread
+self.addEventListener('message', e => {
+  if (!e.data) return;
 
+  if (e.data.type === 'INIT') {
+    e.ports?.[0]?.postMessage({ type: 'ACK' });
+  }
+
+  // Bus alert notification — used when app is in background
+  if (e.data.type === 'BUS_ALERT') {
+    const { title, body, requireInteraction } = e.data;
     self.registration.showNotification(title, {
       body,
       icon: './icon-192.png',
       badge: './icon-72.png',
-      vibrate: stopsAway === 0 ? [200, 100, 200, 100, 400] : [300, 100, 300],
-      tag: `bus-${busNo}`,
+      vibrate: requireInteraction
+        ? [200, 100, 200, 100, 400]
+        : [300, 100, 300],
+      tag: 'bus-alert',
       renotify: true,
-      requireInteraction: stopsAway === 0,
-    });
+      requireInteraction: !!requireInteraction,
+      data: { url: './' },
+    }).catch(() => {});
   }
 });
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
-      if (clientList.length > 0) return clientList[0].focus();
+// Tap notification → bring app to focus
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      if (list.length > 0) return list[0].focus();
       return clients.openWindow('./');
     })
   );
