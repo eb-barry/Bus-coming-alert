@@ -676,6 +676,8 @@ const S = {
   swReg:null,  // ServiceWorkerRegistration — stored on init
   pendingRoute:null, pendingDir:null,
   kbuf:'',
+  // Boarding detection: key -> {arrivedLat, arrivedLng, timerId}
+  boardingCheck:{},
 };
 
 /* ══════════════════════════════════════════
@@ -851,10 +853,15 @@ const UNNAMED_TRUNKS = [
 ];
 
 function openTrunkPicker() {
-  // Show inline grid of trunk lines matching dir-card style
   const grid = document.getElementById('trunkGrid');
   const panel = document.getElementById('trunkInline');
   if (!grid || !panel) return;
+
+  // Toggle: if already visible, close it
+  if (panel.style.display === 'block') {
+    closeTrunkPicker();
+    return;
+  }
 
   grid.innerHTML = UNNAMED_TRUNKS.map(t => `
     <div class="dir-card" onclick="selectTrunk('${t.route}')" style="text-align:center;padding:12px 8px">
@@ -1137,9 +1144,11 @@ function startMonitorFromQueue() {
 
 function removeActiveBus(i) {
   const b=S.buses[i];
+  const key=b.tdxName+'_'+b.dir;
+  cancelBoardingCheck(key);
   S.buses.splice(i,1);
-  S.arrived.delete(b.tdxName+'_'+b.dir);
-  delete S.lastAlert[b.tdxName+'_'+b.dir];
+  S.arrived.delete(key);
+  delete S.lastAlert[key];
   renderMonitor(); renderQueue();
   toast(`已移除 ${b.userLabel}`);
   if (S.buses.length===0) stopMonitor();
@@ -1148,6 +1157,68 @@ function removeActiveBus(i) {
 function clearAll() {
   S.busQueue=[]; S.buses=[]; S.arrived.clear(); S.lastAlert={};
   stopMonitor(); renderMonitor(); renderQueue(); toast('已清除全部路線');
+}
+
+/* ══════════════════════════════════════════
+   BOARDING DETECTION
+   After bus arrives at user's stop:
+   - Record GPS position
+   - After 30s, check if user moved ≥ 50m
+     → moved: "已上車，祝您旅程愉快"
+     → not moved: "已經過站，請等待下一班車"
+   Both cases stop monitoring this route
+══════════════════════════════════════════ */
+function startBoardingCheck(bus, key, userSeq) {
+  if (S.boardingCheck[key]) return; // already running
+
+  const snapLat = S.lat;
+  const snapLng = S.lng;
+  if (!snapLat) return; // no GPS, skip
+
+  const timer = setTimeout(() => {
+    delete S.boardingCheck[key];
+    const nm = bus.isMapped ? bus.tdxName : bus.userLabel;
+    const curLat = S.lat;
+    const curLng = S.lng;
+    const moved = (curLat && curLng && snapLat && snapLng)
+      ? haversine(snapLat, snapLng, curLat, curLng)
+      : 0;
+
+    if (moved >= 50) {
+      // User boarded the bus
+      speak(`您已經上車，祝您旅程愉快`);
+      sendNotif(`🎉 已上車`, `祝您旅程愉快！${nm} 監控已結束`, false).catch(()=>{});
+      toast(`🎉 偵測到您已上車，監控結束`);
+    } else {
+      // User missed the bus
+      speak(`${nm}，已經過站，請等待下一班車`);
+      sendNotif(`⏭ ${nm} 已過站`, `請等待下一班車`, false).catch(()=>{});
+      toast(`⚠️ ${nm} 已過站，請等下一班`);
+    }
+
+    // Stop monitoring this specific route
+    const idx = S.buses.findIndex(b => b.tdxName+'_'+b.dir === key);
+    if (idx > -1) {
+      S.buses.splice(idx, 1);
+      S.arrived.delete(key);
+      delete S.lastAlert[key];
+      renderMonitor();
+      renderQueue();
+    }
+    if (S.buses.length === 0) {
+      stopMonitor();
+      updateStatus();
+    }
+  }, 30000);
+
+  S.boardingCheck[key] = { timer, snapLat, snapLng };
+}
+
+function cancelBoardingCheck(key) {
+  if (S.boardingCheck[key]) {
+    clearTimeout(S.boardingCheck[key].timer);
+    delete S.boardingCheck[key];
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -1216,6 +1287,8 @@ function stopMonitor() {
   releaseWakeLock();
   window.speechSynthesis?.cancel();
   S.speechQueue=[]; S.speaking=false;
+  // Cancel any pending boarding detection timers
+  Object.keys(S.boardingCheck).forEach(k => cancelBoardingCheck(k));
   document.getElementById('alertSec').style.display='none';
   document.getElementById('cdLbl').textContent='';
   document.getElementById('refreshBadge').style.display='none';
@@ -1291,6 +1364,15 @@ async function fetchAll() {
         if (diff>=0&&diff<minD) { minD=diff; closest=b; }
       }
 
+      // Check if bus has passed user's stop (StopSequence now > nearSeq)
+      if (!closest && !S.arrived.has(key)) {
+        const busAhead = onRoute.find(b => b.StopSequence > userSeq);
+        if (busAhead && S.lastAlert[key]?.away === 0 && !S.boardingCheck[key]) {
+          // Bus was at user stop last cycle and is now ahead — trigger boarding check
+          startBoardingCheck(bus, key, userSeq);
+        }
+      }
+
       if (closest) {
         const away=minD, curSeq=closest.StopSequence;
         const curStop=stopName(bus,curSeq);
@@ -1300,44 +1382,25 @@ async function fetchAll() {
         // Track for dynamic interval
         if (away<minStopsAway) minStopsAway=away;
 
-        // Fetch ETA for user's stop (separate call, only if quota allows)
-        let etaMins=null;
-        if (away>0 && canCall()) {
-          try {
-            markCall();
-            const etaData=await apiFetch(`/v2/Bus/EstimatedTimeOfArrival/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`);
-            const etaEntry=etaData.find(e=>e.Direction===bus.dir&&e.StopSequence===userSeq);
-            etaMins=etaEntry&&etaEntry.EstimatedArrivalTime>0 ? Math.round(etaEntry.EstimatedArrivalTime/60) : null;
-          } catch(_){}
-        }
-
         if (away===0) {
           if (!S.arrived.has(key)) {
             S.arrived.add(key);
             S.lastAlert[key]={away:0,lastSeq:curSeq};
             if (isNew) announceArrived(bus,stopName(bus,userSeq));
+            // Start 30-second boarding detection window
+            startBoardingCheck(bus,key,userSeq);
           }
           results.push({bus,away:0,curStop,status:'arrived'});
         } else if (away<=alertStops) {
           S.lastAlert[key]={away,lastSeq:curSeq};
           if (isNew) announceApproach(bus,away,curStop);
-          results.push({bus,away,curStop,etaMins,status:away<=2?'close':'near'});
+          results.push({bus,away,curStop,status:away<=2?'close':'near'});
         } else {
           S.lastAlert[key]={away,lastSeq:curSeq};
-          results.push({bus,away,curStop,etaMins,status:'normal'});
+          results.push({bus,away,curStop,status:'normal'});
         }
       } else {
-        // Lazy ETA fetch only when no real-time vehicle found
-        let mins=null;
-        if (canCall()) {
-          try {
-            markCall();
-            const etaData=await apiFetch(`/v2/Bus/EstimatedTimeOfArrival/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`);
-            const e=etaData.find(e=>e.Direction===bus.dir&&e.StopSequence===userSeq);
-            mins=e?Math.round(e.EstimatedArrivalTime/60):null;
-          } catch(_){}
-        }
-        results.push({bus,mins,status:'waiting'});
+        results.push({bus,mins:null,status:'waiting'});
       }
     } catch(e) {
       results.push({bus,err:e.message,status:'error'});
@@ -1408,21 +1471,21 @@ function renderAlerts(results) {
     if (r.status==='close') return `
       <div class="ac close">
         <div class="ac-bus c-err">🔔 ${nm}（${dl}）</div>
-        <div class="ac-detail">⚠️ 距您還有 <strong>${r.away} 站</strong>，請準備！${r.etaMins!=null?` <span style="font-size:0.82rem;opacity:0.85">約 ${r.etaMins} 分鐘後到站</span>`:''}</div>
+        <div class="ac-detail">⚠️ 距您還有 <strong>${r.away} 站</strong>，請準備！</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
         ${dots(r.away)}
       </div>`;
     if (r.status==='near') return `
       <div class="ac near">
         <div class="ac-bus c-acc">🚌 ${nm}（${dl}）</div>
-        <div class="ac-detail">距您還有 <strong>${r.away} 站</strong>${r.etaMins!=null?` <span style="font-size:0.82rem;color:var(--TX2)">約 ${r.etaMins} 分鐘後到站</span>`:''}</div>
+        <div class="ac-detail">距您還有 <strong>${r.away} 站</strong></div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
         ${dots(r.away)}
       </div>`;
     if (r.status==='normal') return `
       <div class="ac">
         <div class="ac-bus c-pri">🚌 ${nm}（${dl}）</div>
-        <div class="ac-detail">距您還有 ${r.away} 站${r.etaMins!=null?` <span style="font-size:0.82rem;color:var(--TX2)">約 ${r.etaMins} 分鐘後到站</span>`:''}</div>
+        <div class="ac-detail">距您還有 ${r.away} 站</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
       </div>`;
     if (r.status==='waiting') return `
