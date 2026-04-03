@@ -420,6 +420,12 @@ input:focus,select:focus{border-color:var(--P);}
       <button class="kbd-key" style="grid-column:span 2;background:#2d6a4f;color:#fff;border-color:#2d6a4f;font-size:0.82rem" id="kbdAddBtn" onclick="queueBus()" disabled>➕ 加入監控</button>
     </div>
 
+    <!-- Trunk line inline grid (shown when user presses 幹線 key) -->
+    <div id="trunkInline" style="display:none;margin-top:10px;">
+      <label style="margin-bottom:8px">選擇幹線公車</label>
+      <div id="trunkGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+    </div>
+
     <!-- Direction selection -->
     <div id="dirSection" style="display:none;margin-top:10px;">
       <label>選擇行駛方向（請點選）</label>
@@ -429,17 +435,6 @@ input:focus,select:focus{border-color:var(--P);}
     <!-- Confirm card -->
     <div id="confirmCard" style="display:none"></div>
 
-  </div>
-</div>
-
-<!-- Trunk line picker bottom sheet -->
-<div class="trunk-picker" id="trunkPicker">
-  <div class="trunk-sheet">
-    <div class="trunk-title">
-      <span>🚌 選擇幹線公車</span>
-      <button style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--TX2)" onclick="closeTrunkPicker()">✕</button>
-    </div>
-    <div class="trunk-list" id="trunkList"></div>
   </div>
 </div>
 
@@ -707,9 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.mbd').forEach(bd =>
     bd.addEventListener('click', e => { if (e.target===bd) bd.classList.remove('open'); })
   );
-  document.getElementById('trunkPicker')?.addEventListener('click', e => {
-    if (e.target===document.getElementById('trunkPicker')) closeTrunkPicker();
-  });
+
   updateCacheStatus();
 });
 
@@ -831,8 +824,8 @@ function resetLookup() {
   S.pendingRoute=null; S.pendingDir=null;
   document.getElementById('dirSection').style.display='none';
   document.getElementById('confirmCard').style.display='none';
-  const ab = document.getElementById('kbdAddBtn');
-  if (ab) { ab.disabled=true; ab.style.opacity='0.45'; }
+  const ti=document.getElementById('trunkInline'); if(ti) ti.style.display='none';
+  const ab=document.getElementById('kbdAddBtn'); if(ab){ab.disabled=true;ab.style.opacity='0.45';}
 }
 
 /* ── Trunk line picker ── */
@@ -850,20 +843,29 @@ const UNNAMED_TRUNKS = [
 ];
 
 function openTrunkPicker() {
-  const list = document.getElementById('trunkList');
-  list.innerHTML = UNNAMED_TRUNKS.map(t => `
-    <div class="trunk-item" onclick="selectTrunk('${t.route}')">
-      <span style="font-size:1.4rem">🚌</span>
-      <div>
-        <div class="ti-name">${t.name}</div>
-        <div class="ti-sub">${t.desc}</div>
-      </div>
+  // Show inline grid of trunk lines matching dir-card style
+  const grid = document.getElementById('trunkGrid');
+  const panel = document.getElementById('trunkInline');
+  if (!grid || !panel) return;
+
+  grid.innerHTML = UNNAMED_TRUNKS.map(t => `
+    <div class="dir-card" onclick="selectTrunk('${t.route}')" style="text-align:center;padding:12px 8px">
+      <div class="dc-lbl">幹線公車</div>
+      <div class="dc-dest" style="font-size:0.92rem">${t.name}</div>
+      <div class="dc-from">${t.desc}</div>
     </div>`).join('');
-  document.getElementById('trunkPicker').classList.add('open');
+
+  // Hide direction section and confirm, show trunk grid
+  document.getElementById('dirSection').style.display = 'none';
+  document.getElementById('confirmCard').style.display = 'none';
+  panel.style.display = 'block';
+  S.kbuf = '';
+  updateKbDisplay();
 }
 
 function closeTrunkPicker() {
-  document.getElementById('trunkPicker').classList.remove('open');
+  const panel = document.getElementById('trunkInline');
+  if (panel) panel.style.display = 'none';
 }
 
 function selectTrunk(routeName) {
@@ -871,7 +873,8 @@ function selectTrunk(routeName) {
   S.kbuf = routeName;
   updateKbDisplay();
   resetLookup();
-  toast(`已選擇：${routeName}，請按查詢`);
+  // Auto-trigger lookup so direction cards appear immediately
+  doLookup();
 }
 
 function updateKbDisplay() {
@@ -1088,36 +1091,26 @@ function removeFromQueue(i) {
 function renderQueue() {
   const sec=document.getElementById('queueSec');
   const lst=document.getElementById('queueList');
-  if (!S.busQueue.length&&!S.buses.length) { sec.style.display='none'; return; }
+
+  // Once monitoring starts, hide the queue section entirely — it becomes redundant
+  if (S.monitoring) { sec.style.display='none'; return; }
+
+  // Show queue section only when there are buses waiting to be started
+  if (!S.busQueue.length) { sec.style.display='none'; return; }
   sec.style.display='block';
 
-  // Show queue items (waiting to start)
-  lst.innerHTML=[
-    ...S.busQueue.map((b,i)=>`
-      <div class="queue-item">
-        <div style="font-size:1.1rem">🚌</div>
-        <div style="flex:1">
-          <div class="qi-name">${b.isMapped?b.tdxName:b.userLabel}</div>
-          <div class="qi-dir">${b.dir===0?'去程':'返程'} 往 ${b.endStop}</div>
-        </div>
-        <button class="qi-rm" onclick="removeFromQueue(${i})">✕</button>
-      </div>`),
-    ...S.buses.map((b,i)=>`
-      <div class="queue-item" style="background:var(--SUC-BG);border-color:var(--SUC-BD)">
-        <div style="font-size:1.1rem">📡</div>
-        <div style="flex:1">
-          <div class="qi-name" style="color:var(--SUC)">${b.isMapped?b.tdxName:b.userLabel}</div>
-          <div class="qi-dir">${b.dir===0?'去程':'返程'} 往 ${b.endStop} ｜ 監控中</div>
-        </div>
-        <button class="qi-rm" onclick="removeActiveBus(${i})">✕</button>
-      </div>`)
-  ].join('');
+  lst.innerHTML=S.busQueue.map((b,i)=>`
+    <div class="queue-item">
+      <div style="font-size:1.1rem">🚌</div>
+      <div style="flex:1">
+        <div class="qi-name">${b.isMapped?b.tdxName:b.userLabel}</div>
+        <div class="qi-dir">${b.dir===0?'去程':'返程'} 往 ${b.endStop}</div>
+      </div>
+      <button class="qi-rm" onclick="removeFromQueue(${i})">✕</button>
+    </div>`).join('');
 
-  // Show/hide start button
   const startBtn=document.getElementById('startBtn');
-  if (startBtn) {
-    startBtn.style.display=S.busQueue.length>0&&!S.monitoring?'flex':'none';
-  }
+  if (startBtn) startBtn.style.display='flex';
 }
 
 function startMonitorFromQueue() {
@@ -1507,18 +1500,20 @@ function unlockAudio() {
 
 function announceApproach(bus,away,stop) {
   const nm=bus.isMapped?bus.tdxName:bus.userLabel;
+  // TTS must be called synchronously first — never block it with async
   speak(`${nm}目前已經到達${stop}，距離您的站牌還有${away}站，請準備上車`);
   vibrate([300,100,300]);
-  // iOS background: send notification
-  sendNotif(`🚌 ${nm} 距您 ${away} 站`,`公車目前位置：${stop}，請準備上車`);
+  // Fire-and-forget: notification is async but we never await it here
+  sendNotif(`🚌 ${nm} 距您 ${away} 站`,`公車目前位置：${stop}，請準備上車`).catch(()=>{});
 }
 
 function announceArrived(bus,stop) {
   const nm=bus.isMapped?bus.tdxName:bus.userLabel;
+  // TTS first, synchronous
   speak(`${nm}已經到達${stop}，請立刻準備上車`);
   vibrate([200,100,200,100,400]);
   showOverlay(nm,stop);
-  sendNotif(`✅ ${nm} 已到站！`,`公車已抵達「${stop}」，請立刻上車！`,true);
+  sendNotif(`✅ ${nm} 已到站！`,`公車已抵達「${stop}」，請立刻上車！`,true).catch(()=>{});
 }
 
 function speak(text) {
@@ -1703,26 +1698,17 @@ async function testNotification() {
 
 async function sendNotif(title, body, requireInteraction) {
   if (Notification.permission !== 'granted') return;
-
   const opts = {
-    body,
-    icon: './icon-192.png',
-    badge: './icon-72.png',
-    // vibrate is honoured by Android; iOS ignores it but shows sound+banner
-    vibrate: requireInteraction ? [200,100,200,100,400] : [300,100,300],
-    requireInteraction: !!requireInteraction,
-    tag: 'bus-alert',
-    renotify: true,
-    silent: false,   // explicitly request sound on iOS
+    body, icon:'./icon-192.png', badge:'./icon-72.png',
+    vibrate: requireInteraction?[200,100,200,100,400]:[300,100,300],
+    requireInteraction:!!requireInteraction,
+    tag:'bus-alert', renotify:true, silent:false,
   };
-
-  // Preferred: use SW registration — works in foreground AND background
-  const reg = S.swReg || (await navigator.serviceWorker?.ready.catch(()=>null));
-  if (reg) {
-    try { await reg.showNotification(title, opts); return; } catch(e) {}
+  // Use already-stored reg (non-blocking) — avoids async delays that break TTS
+  if (S.swReg) {
+    try { await S.swReg.showNotification(title, opts); return; } catch(e) {}
   }
-
-  // Fallback: direct Notification API (foreground only)
+  // Fallback: direct Notification (foreground only, no async)
   try { new Notification(title, opts); } catch(e) {}
 }
 
