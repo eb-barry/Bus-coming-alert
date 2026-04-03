@@ -194,10 +194,16 @@ body{
 .ac-stop{font-size:0.8rem;color:var(--TX2);margin-top:2px;}
 /* Progress dots */
 .prog{display:flex;align-items:center;margin-top:9px;overflow-x:auto;padding-bottom:2px;}
+.prog-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:0;}
 .pd{width:11px;height:11px;border-radius:50%;background:var(--BD);flex-shrink:0;}
 .pd.passed{background:var(--PL);}
-.pd.cur{background:var(--ACC);width:15px;height:15px;box-shadow:0 0 0 3px rgba(232,93,4,0.22);}
 .pd.user{background:var(--ERR);width:15px;height:15px;border:2px solid #fff;box-shadow:0 0 0 3px var(--ERR);}
+/* bus icon replaces the cur dot — floats above the line */
+.bus-icon{
+  font-size:1.05rem;line-height:1;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;top:-1px;
+}
 .pl{flex:1;height:3px;background:var(--BD);min-width:6px;}
 .pl.passed{background:var(--PL);}
 .prog-leg{font-size:0.7rem;color:var(--TX2);margin-top:3px;}
@@ -457,18 +463,6 @@ input:focus,select:focus{border-color:var(--P);}
   </div>
   <div class="sec-bd">
     <div class="btags" id="btags"></div>
-    <div class="divider"></div>
-    <div class="form-row" style="margin-bottom:0">
-      <label>提前幾站開始提醒</label>
-      <select id="alertStops" onchange="savePrefs()">
-        <option value="2">提前 2 站</option>
-        <option value="3">提前 3 站</option>
-        <option value="4">提前 4 站</option>
-        <option value="5" selected>提前 5 站（預設）</option>
-        <option value="6">提前 6 站</option>
-        <option value="7">提前 7 站</option>
-      </select>
-    </div>
     <div class="refresh-badge" id="refreshBadge" style="display:none">
       <div class="rb-dot"></div>
       <span id="refreshTxt"></span>
@@ -531,6 +525,20 @@ input:focus,select:focus{border-color:var(--P);}
           </div>
           <button class="btn-sm" onclick="clearStopCache()">🔄 更新站牌</button>
         </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-row">
+        <label>🔔 提前幾站開始提醒</label>
+        <select id="alertStops" onchange="savePrefs()">
+          <option value="2">提前 2 站</option>
+          <option value="3">提前 3 站</option>
+          <option value="4">提前 4 站</option>
+          <option value="5" selected>提前 5 站（預設）</option>
+          <option value="6">提前 6 站</option>
+          <option value="7">提前 7 站</option>
+        </select>
       </div>
 
       <div class="divider"></div>
@@ -1292,6 +1300,17 @@ async function fetchAll() {
         // Track for dynamic interval
         if (away<minStopsAway) minStopsAway=away;
 
+        // Fetch ETA for user's stop (separate call, only if quota allows)
+        let etaMins=null;
+        if (away>0 && canCall()) {
+          try {
+            markCall();
+            const etaData=await apiFetch(`/v2/Bus/EstimatedTimeOfArrival/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`);
+            const etaEntry=etaData.find(e=>e.Direction===bus.dir&&e.StopSequence===userSeq);
+            etaMins=etaEntry&&etaEntry.EstimatedArrivalTime>0 ? Math.round(etaEntry.EstimatedArrivalTime/60) : null;
+          } catch(_){}
+        }
+
         if (away===0) {
           if (!S.arrived.has(key)) {
             S.arrived.add(key);
@@ -1302,10 +1321,10 @@ async function fetchAll() {
         } else if (away<=alertStops) {
           S.lastAlert[key]={away,lastSeq:curSeq};
           if (isNew) announceApproach(bus,away,curStop);
-          results.push({bus,away,curStop,status:away<=2?'close':'near'});
+          results.push({bus,away,curStop,etaMins,status:away<=2?'close':'near'});
         } else {
           S.lastAlert[key]={away,lastSeq:curSeq};
-          results.push({bus,away,curStop,status:'normal'});
+          results.push({bus,away,curStop,etaMins,status:'normal'});
         }
       } else {
         // Lazy ETA fetch only when no real-time vehicle found
@@ -1389,21 +1408,21 @@ function renderAlerts(results) {
     if (r.status==='close') return `
       <div class="ac close">
         <div class="ac-bus c-err">🔔 ${nm}（${dl}）</div>
-        <div class="ac-detail">⚠️ 距您還有 <strong>${r.away} 站</strong>，請準備！</div>
+        <div class="ac-detail">⚠️ 距您還有 <strong>${r.away} 站</strong>，請準備！${r.etaMins!=null?` <span style="font-size:0.82rem;opacity:0.85">約 ${r.etaMins} 分鐘後到站</span>`:''}</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
         ${dots(r.away)}
       </div>`;
     if (r.status==='near') return `
       <div class="ac near">
         <div class="ac-bus c-acc">🚌 ${nm}（${dl}）</div>
-        <div class="ac-detail">距您還有 <strong>${r.away} 站</strong></div>
+        <div class="ac-detail">距您還有 <strong>${r.away} 站</strong>${r.etaMins!=null?` <span style="font-size:0.82rem;color:var(--TX2)">約 ${r.etaMins} 分鐘後到站</span>`:''}</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
         ${dots(r.away)}
       </div>`;
     if (r.status==='normal') return `
       <div class="ac">
         <div class="ac-bus c-pri">🚌 ${nm}（${dl}）</div>
-        <div class="ac-detail">距您還有 ${r.away} 站</div>
+        <div class="ac-detail">距您還有 ${r.away} 站${r.etaMins!=null?` <span style="font-size:0.82rem;color:var(--TX2)">約 ${r.etaMins} 分鐘後到站</span>`:''}</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
       </div>`;
     if (r.status==='waiting') return `
@@ -1424,13 +1443,35 @@ function renderAlerts(results) {
 }
 
 function dots(away) {
-  const t=Math.min(away+2,9); let h='<div class="prog">';
-  for (let i=0;i<t;i++) {
-    const p=i<t-away-1,c=i===t-away-1,u=i===t-1;
-    h+=`<div class="pd ${p?'passed':''} ${c?'cur':''} ${u?'user':''}"></div>`;
-    if (i<t-1) h+=`<div class="pl ${p?'passed':''}"></div>`;
+  // Show all stops from start of visible window to user stop
+  // total visible stops = away + 1 (current bus pos) + 1 (one more before) capped at 9
+  const total = Math.min(away + 2, 9);
+  // busPos is the index where the bus currently is
+  const busIdx = total - away - 1;
+  // userIdx is always the last dot
+  const userIdx = total - 1;
+
+  let h = '<div class="prog">';
+  for (let i = 0; i < total; i++) {
+    const isPassed = i < busIdx;   // stops the bus has already passed → blue
+    const isBus    = i === busIdx; // current bus position → 🚌 emoji
+    const isUser   = i === userIdx; // user's stop → red dot
+
+    if (isBus) {
+      // Bus emoji instead of dot — line segment before it is passed (blue)
+      h += `<div class="bus-icon">🚌</div>`;
+    } else {
+      // Regular stop dot — passed ones blue, future ones grey, user stop red
+      h += `<div class="pd ${isPassed ? 'passed' : ''} ${isUser ? 'user' : ''}"></div>`;
+    }
+    // Connecting line
+    if (i < total - 1) {
+      h += `<div class="pl ${isPassed ? 'passed' : ''}"></div>`;
+    }
   }
-  return h+'</div><div class="prog-leg">🟠 公車目前位置 ｜ 🔴 您的站牌</div>';
+  h += '</div>';
+  h += '<div class="prog-leg">🚌 公車目前位置 ｜ 🔴 您的站牌</div>';
+  return h;
 }
 
 /* ══════════════════════════════════════════
