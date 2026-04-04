@@ -445,33 +445,37 @@ input:focus,select:focus{border-color:var(--P);}
 </div>
 
 <!-- Monitor section -->
-<div class="sec" id="monSec" style="display:none">
-  <div class="sec-hd">
-    📡 監控中
-    <span style="margin-left:auto;font-size:0.78rem;font-weight:400" id="cdLbl"></span>
-  </div>
-  <div class="sec-bd" style="padding:10px 16px">
-    <div class="refresh-badge" id="refreshBadge" style="display:none">
-      <div class="rb-dot"></div>
-      <span id="refreshTxt"></span>
-    </div>
-  </div>
-</div>
-
-<!-- Live alerts -->
+<!-- Live alerts — monitoring status merged into this header -->
 <div class="sec" id="alertSec" style="display:none">
-  <div class="sec-hd" style="background:var(--ERR)">🔔 即時到站狀況</div>
+  <div class="sec-hd" style="background:var(--ERR);flex-wrap:wrap;gap:4px">
+    <span>🔔 即時到站狀況</span>
+    <span style="margin-left:auto;font-size:0.75rem;font-weight:400;opacity:0.9;display:flex;align-items:center;gap:6px">
+      <span id="refreshTxt" style="display:none"></span>
+      <span id="cdLbl"></span>
+    </span>
+  </div>
   <div class="sec-bd">
     <div class="alist" id="alist"></div>
   </div>
 </div>
+<!-- monSec removed — merged into alertSec header -->
+<div id="monSec" style="display:none"></div>
+<div id="refreshBadge" style="display:none"><div class="rb-dot"></div></div>
 
 <!-- Full-screen alert overlay -->
 <div class="overlay" id="overlay">
   <div class="ov-icon">🚌</div>
   <div class="ov-title" id="ovTitle">公車快到了！</div>
   <div class="ov-msg"   id="ovMsg">…</div>
-  <button class="ov-btn" onclick="dismissOverlay()">知道了 ✓</button>
+  <button class="ov-btn" onclick="dismissAndBoard()">知道了 ✓</button>
+</div>
+
+<!-- Thank-you end screen -->
+<div class="overlay" id="thankYouOverlay" style="background:var(--SUC);animation:none">
+  <div class="ov-icon">🎉</div>
+  <div class="ov-title" style="font-size:1.6rem">感謝使用</div>
+  <div class="ov-msg">監控已結束<br>祝您旅程愉快！</div>
+  <button class="ov-btn" style="color:var(--SUC)" onclick="closeThankYou()">關閉</button>
 </div>
 
 <div class="toast-c" id="toastC"></div>
@@ -640,6 +644,9 @@ const TDX_TOKEN = 'https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/
 const TDX_BASE  = 'https://tdx.transportdata.tw/api/basic';
 const STOP_TTL  = 7 * 24 * 3600 * 1000;
 const ROUTE_TTL = 24 * 3600 * 1000;
+
+// Platform detection
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
 // Dynamic refresh intervals (ms) — tuned for TDX 5 calls/min limit
 const INTERVAL_FAR   = 60000;  // > alertStops: 60s (safe for any number of routes)
@@ -1314,6 +1321,7 @@ function startMonitor() {
   S.monitoring=true; S.currentInterval=INTERVAL_FAR;
   updateStatus(); acquireWakeLock();
   startAudioKeepAlive();   // Method C background keep-alive
+  document.getElementById('alertSec').style.display='block'; // show immediately
   fetchAll();
   scheduleNext();
 }
@@ -1328,8 +1336,8 @@ function stopMonitor() {
   // Cancel any pending boarding detection timers
   Object.keys(S.boardingCheck).forEach(k => cancelBoardingCheck(k));
   document.getElementById('alertSec').style.display='none';
-  document.getElementById('cdLbl').textContent='';
-  document.getElementById('refreshBadge').style.display='none';
+  const _lbl=document.getElementById('cdLbl'); if(_lbl) _lbl.textContent='';
+  const _txt=document.getElementById('refreshTxt'); if(_txt) _txt.style.display='none';
   updateStatus();
 }
 
@@ -1356,14 +1364,15 @@ function startCountdownTick() {
 
 function updateCountdown() {
   const lbl=document.getElementById('cdLbl');
-  const badge=document.getElementById('refreshBadge');
   const txt=document.getElementById('refreshTxt');
   if (!S.monitoring) return;
-  lbl.textContent=`🔄 ${S.countdown}s`;
-  badge.style.display='flex';
-  const rate=S.currentInterval===INTERVAL_CLOSE?'10秒/次（即將到站）':
-             S.currentInterval===INTERVAL_NEAR?'20秒/次（公車接近中）':'60秒/次';
-  txt.textContent=`更新頻率：${rate}`;
+  if (lbl) lbl.textContent=`🔄 ${S.countdown}s`;
+  if (txt) {
+    const rate=S.currentInterval===INTERVAL_CLOSE?'15s/次':
+               S.currentInterval===INTERVAL_NEAR?'30s/次':'60s/次';
+    txt.textContent=rate;
+    txt.style.display='inline';
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -1863,6 +1872,24 @@ function showOverlay(nm,stop) {
   document.getElementById('ovMsg').textContent=`${nm}已抵達「${stop}」\n請立刻準備上車！`;
   document.getElementById('overlay').classList.add('show');
 }
+
+function dismissAndBoard() {
+  document.getElementById('overlay').classList.remove('show');
+  // Play boarded audio, then show thank-you screen after audio finishes
+  announceBoarded();
+  setTimeout(showThankYou, 3500); // allow ~3.5s for audio playback
+}
+
+function showThankYou() {
+  document.getElementById('thankYouOverlay').classList.add('show');
+  stopMonitor();
+  updateStatus();
+}
+
+function closeThankYou() {
+  document.getElementById('thankYouOverlay').classList.remove('show');
+}
+
 function dismissOverlay() { document.getElementById('overlay').classList.remove('show'); }
 
 /* ══════════════════════════════════════════
@@ -1870,11 +1897,15 @@ function dismissOverlay() { document.getElementById('overlay').classList.remove(
    (requires user to grant permission)
 ══════════════════════════════════════════ */
 function checkNotifPerm() {
+  if (IS_IOS) {
+    // iOS: hide all notification UI, just wait for SW
+    navigator.serviceWorker?.ready.then(reg => { S.swReg = reg; });
+    return;
+  }
   if (!('Notification' in window)) return;
   if (Notification.permission === 'default') {
     document.getElementById('notifBanner').style.display = 'flex';
   }
-  // Update status display (will run after SW ready)
   navigator.serviceWorker?.ready.then(reg => {
     S.swReg = reg;
     updateNotifStatus();
@@ -2005,6 +2036,7 @@ async function testNotification() {
 }
 
 async function sendNotif(title, body, requireInteraction) {
+  if (IS_IOS) return; // iOS: notifications not supported in background — skip entirely
   if (Notification.permission !== 'granted') return;
   const opts = {
     body, icon:'./icon-192.png', badge:'./icon-72.png',
@@ -2012,11 +2044,9 @@ async function sendNotif(title, body, requireInteraction) {
     requireInteraction:!!requireInteraction,
     tag:'bus-alert', renotify:true, silent:false,
   };
-  // Use already-stored reg (non-blocking) — avoids async delays that break TTS
   if (S.swReg) {
     try { await S.swReg.showNotification(title, opts); return; } catch(e) {}
   }
-  // Fallback: direct Notification (foreground only, no async)
   try { new Notification(title, opts); } catch(e) {}
 }
 
@@ -2105,8 +2135,19 @@ function openSettings(){
   document.getElementById('cfgId').value=ls('tdx_id')||'';
   document.getElementById('cfgSecret').value=ls('tdx_sec')||'';
   updateCacheStatus();
-  // Small delay so SW.swReg can be populated
-  setTimeout(updateNotifStatus, 200);
+  if (IS_IOS) {
+    // Hide notification section on iOS — not supported
+    const nb=document.getElementById('notifBanner');
+    if(nb) nb.style.display='none';
+    const tn=document.getElementById('testNotifBtn');
+    if(tn) tn.closest('.form-row') && (tn.closest('.form-row').style.display='none');
+    const ns=document.getElementById('notifStatus');
+    if(ns) ns.closest('.form-row') && (ns.closest('.form-row').style.display='none');
+    const sg=document.getElementById('setupGuide');
+    if(sg) sg.style.display='none';
+  } else {
+    setTimeout(updateNotifStatus, 200);
+  }
   document.getElementById('settingsModal').classList.add('open');
 }
 function openFavs(){ renderFavList(); document.getElementById('favsModal').classList.add('open'); }
