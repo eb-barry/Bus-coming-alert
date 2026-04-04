@@ -58,14 +58,7 @@ body{
 .icon-btn:active{background:rgba(255,255,255,0.3);}
 
 /* ── Status bar ── */
-.sbar{
-  margin:10px 12px 0;padding:10px 14px;border-radius:var(--Rs);
-  font-size:0.82rem;display:flex;align-items:center;gap:8px;font-weight:600;
-}
-.s-idle{background:var(--INF-BG);color:var(--P);border:1.5px solid var(--INF-BD);}
-.s-ok  {background:var(--SUC-BG);color:var(--SUC);border:1.5px solid var(--SUC-BD);}
-.s-alert{background:var(--ERR-BG);color:var(--ERR);border:1.5px solid var(--ERR);animation:pb 1s infinite;}
-@keyframes pb{0%,100%{box-shadow:0 0 0 0 rgba(193,18,31,0.4);}50%{box-shadow:0 0 0 6px rgba(193,18,31,0);}}
+
 @keyframes spin{to{transform:rotate(360deg);}}
 
 /* ── Section cards ── */
@@ -375,10 +368,7 @@ input:focus,select:focus{border-color:var(--P);}
 </div>
 
 <!-- Status bar -->
-<div class="sbar s-idle" id="sbar">
-  <span id="sIcon">🔍</span>
-  <span id="sTxt">請加入公車路線開始監控</span>
-</div>
+<!-- status bar removed: monitoring state shown in header GPS pill -->
 
 <!-- Bus input section -->
 <div class="sec">
@@ -421,9 +411,10 @@ input:focus,select:focus{border-color:var(--P);}
       <button class="kbd-key"         onclick="kp('0')">0</button>
       <button class="kbd-key del"     onclick="kbDel()">⌫</button>
       <button class="kbd-key del" style="font-size:0.8rem" onclick="kbClear()">清除</button>
-      <!-- Row 5: search + add-to-queue -->
-      <button class="kbd-key search-btn" style="grid-column:span 3" onclick="doLookup()">🔍 查詢</button>
-      <button class="kbd-key" style="grid-column:span 2;background:#2d6a4f;color:#fff;border-color:#2d6a4f;font-size:0.82rem" id="kbdAddBtn" onclick="queueBus()" disabled>➕ 加入監控</button>
+      <!-- Row 5: 查詢 | 開始監控 | 加入監控 — equal thirds -->
+      <button class="kbd-key search-btn" style="grid-column:span 1;font-size:0.82rem" onclick="doLookup()" id="kbdQueryBtn">🔍 查詢</button>
+      <button class="kbd-key" style="grid-column:span 2;background:#c1121f;color:#fff;border-color:#c1121f;font-size:0.82rem;letter-spacing:0" id="kbdStartBtn" onclick="startMonitorFromQueue()">🔴 開始監控</button>
+      <button class="kbd-key" style="grid-column:span 2;background:#2d6a4f;color:#fff;border-color:#2d6a4f;font-size:0.78rem" id="kbdAddBtn" onclick="queueBus()" disabled>➕ 加入監控</button>
     </div>
 
     <!-- Trunk line inline grid (shown when user presses 幹線 key) -->
@@ -449,9 +440,7 @@ input:focus,select:focus{border-color:var(--P);}
   <div class="sec-hd">📋 待監控清單</div>
   <div class="sec-bd">
     <div class="queue-list" id="queueList"></div>
-    <button class="btn btn-red" id="startBtn" onclick="startMonitorFromQueue()">
-      🔴 開始監控
-    </button>
+
   </div>
 </div>
 
@@ -539,6 +528,16 @@ input:focus,select:focus{border-color:var(--P);}
           <option value="6">提前 6 站</option>
           <option value="7">提前 7 站</option>
         </select>
+      </div>
+
+      <div class="form-row">
+        <label>🎙️ 語音播報模式</label>
+        <div class="font-sw" id="voiceModeRow">
+          <button class="font-btn" data-vmode="1"    onclick="setVoiceMode('1')">👨 男聲<br><span style="font-size:0.7em">TTS</span></button>
+          <button class="font-btn" data-vmode="2"    onclick="setVoiceMode('2')">👩 女聲<br><span style="font-size:0.7em">TTS</span></button>
+          <button class="font-btn" data-vmode="1212" onclick="setVoiceMode('1212')">🎙️ 混合<br><span style="font-size:0.7em">MP3+TTS</span></button>
+        </div>
+        <div id="voiceModeDesc" style="font-size:0.75rem;color:var(--TX2);margin-top:6px;line-height:1.5"></div>
       </div>
 
       <div class="divider"></div>
@@ -671,7 +670,7 @@ const S = {
   monitoring:false, token:null, tokenExp:0,
   timerId:null, countdown:60, currentInterval:INTERVAL_FAR,
   lastAlert:{}, arrived:new Set(),
-  speechQueue:[], speaking:false, audioUnlocked:false,
+  audioUnlocked:false,
   wakeLock:null,
   swReg:null,  // ServiceWorkerRegistration — stored on init
   pendingRoute:null, pendingDir:null,
@@ -720,12 +719,15 @@ document.addEventListener('DOMContentLoaded', () => {
    PREFS / STORAGE
 ══════════════════════════════════════════ */
 function loadPrefs() {
-  document.getElementById('cfgId').value     = ls('tdx_id')  || '';
-  document.getElementById('cfgSecret').value = ls('tdx_sec') || '';
+  document.getElementById('cfgId').value      = ls('tdx_id')  || '';
+  document.getElementById('cfgSecret').value  = ls('tdx_sec') || '';
   document.getElementById('alertStops').value = ls('alert_stops') || '5';
   setFont(ls('font_size') || 'large', true);
+  setVoiceMode(ls('voice_mode') || '2', true); // default: female TTS
 }
-function savePrefs() { lsSet('alert_stops', document.getElementById('alertStops').value); }
+function savePrefs() {
+  lsSet('alert_stops', document.getElementById('alertStops').value);
+}
 function saveKeys() {
   const id=document.getElementById('cfgId').value.trim();
   const sc=document.getElementById('cfgSecret').value.trim();
@@ -983,6 +985,15 @@ async function doLookup() {
   if (!S.kbuf) { toast('請輸入公車號碼'); return; }
   unlockAudio();
 
+  // Hidden feature: typing 1212 cycles through voice modes
+  if (S.kbuf === '1212') {
+    const cur = ls('voice_mode') || '2';
+    const next = cur === '1' ? '2' : cur === '2' ? '1212' : '1';
+    setVoiceMode(next);
+    S.kbuf = ''; updateKbDisplay();
+    return;
+  }
+
   const resolved=resolveBusName(S.kbuf);
   const qBtn=document.querySelector('.kbd-key.search-btn');
   qBtn.innerHTML='<span class="sp"></span>';
@@ -1124,8 +1135,7 @@ function renderQueue() {
       <button class="qi-rm" onclick="removeFromQueue(${i})">✕</button>
     </div>`).join('');
 
-  const startBtn=document.getElementById('startBtn');
-  if (startBtn) startBtn.style.display='flex';
+
 }
 
 function startMonitorFromQueue() {
@@ -1186,12 +1196,12 @@ function startBoardingCheck(bus, key, userSeq) {
 
     if (moved >= 50) {
       // User boarded the bus
-      speak(`您已經上車，祝您旅程愉快`);
+      announceBoarded();
       sendNotif(`🎉 已上車`, `祝您旅程愉快！${nm} 監控已結束`, false).catch(()=>{});
       toast(`🎉 偵測到您已上車，監控結束`);
     } else {
       // User missed the bus
-      speak(`${nm}，已經過站，請等待下一班車`);
+      announceMissed(nm);
       sendNotif(`⏭ ${nm} 已過站`, `請等待下一班車`, false).catch(()=>{});
       toast(`⚠️ ${nm} 已過站，請等下一班`);
     }
@@ -1277,6 +1287,7 @@ function haversine(la1,lo1,la2,lo2) {
 function startMonitor() {
   S.monitoring=true; S.currentInterval=INTERVAL_FAR;
   updateStatus(); acquireWakeLock();
+  startAudioKeepAlive();   // Method C background keep-alive
   fetchAll();
   scheduleNext();
 }
@@ -1286,7 +1297,8 @@ function stopMonitor() {
   if (S.timerId) { clearTimeout(S.timerId); S.timerId=null; }
   releaseWakeLock();
   window.speechSynthesis?.cancel();
-  S.speechQueue=[]; S.speaking=false;
+  _sQueue.length=0; _sRunning=false;
+  stopAudioKeepAlive();    // Stop keep-alive when monitoring ends
   // Cancel any pending boarding detection timers
   Object.keys(S.boardingCheck).forEach(k => cancelBoardingCheck(k));
   document.getElementById('alertSec').style.display='none';
@@ -1576,80 +1588,260 @@ function renderBusTags() {
 }
 
 function updateStatus() {
-  const bar=document.getElementById('sbar');
-  const ic=document.getElementById('sIcon');
-  const tx=document.getElementById('sTxt');
+  // Status reflected in GPS pill (header) — no separate status bar
   const gps=!!S.lat;
+  const dot=document.getElementById('gpsDot');
+  const lbl=document.getElementById('gpsLbl');
+  if (!dot||!lbl) return;
   if (S.monitoring) {
-    bar.className='sbar s-ok';
-    ic.textContent='📡';
-    tx.textContent=gps?`監控中 ${S.buses.length} 條路線`:'監控中 ｜ 等待 GPS…';
+    dot.className='gps-dot ok';
+    lbl.textContent=`監控中 ${S.buses.length} 線`;
   } else {
-    bar.className='sbar s-idle';
-    ic.textContent=gps?'📍':'🔍';
-    tx.textContent='請加入公車路線開始監控';
+    dot.className='gps-dot '+(gps?'ok':'');
+    lbl.textContent=gps?'已定位':'定位中';
   }
 }
 
 /* ══════════════════════════════════════════
    SPEECH — TTS queue with voice load guard
 ══════════════════════════════════════════ */
-function unlockAudio() {
-  if (S.audioUnlocked||!window.speechSynthesis) return;
+// ── AudioContext keep-alive (Method C: prevents iOS from freezing tab) ──
+let _keepAliveCtx = null;
+let _keepAliveTimer = null;
+
+function startAudioKeepAlive() {
+  if (_keepAliveCtx) return;
   try {
-    const u=new SpeechSynthesisUtterance(' ');
-    u.volume=0; window.speechSynthesis.speak(u); S.audioUnlocked=true;
+    _keepAliveCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _pingKeepAlive();
+  } catch(e) {}
+}
+
+function _pingKeepAlive() {
+  if (!S.monitoring) { stopAudioKeepAlive(); return; }
+  if (!_keepAliveCtx) return;
+  try {
+    // Play a 1-sample silent buffer — tells iOS audio is "active"
+    const buf = _keepAliveCtx.createBuffer(1, 1, 22050);
+    const src = _keepAliveCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(_keepAliveCtx.destination);
+    src.start(0);
+  } catch(e) {}
+  _keepAliveTimer = setTimeout(_pingKeepAlive, 20000);
+}
+
+function stopAudioKeepAlive() {
+  if (_keepAliveTimer) { clearTimeout(_keepAliveTimer); _keepAliveTimer = null; }
+  try { _keepAliveCtx?.close(); } catch(e) {}
+  _keepAliveCtx = null;
+}
+
+function unlockAudio() {
+  if (S.audioUnlocked) return;
+  try {
+    if (window.speechSynthesis) {
+      const u=new SpeechSynthesisUtterance(' ');
+      u.volume=0; window.speechSynthesis.speak(u);
+    }
+    // Also start AudioContext on first user gesture
+    startAudioKeepAlive();
+    S.audioUnlocked=true;
   } catch(e){}
 }
 
-function announceApproach(bus,away,stop) {
-  const nm=bus.isMapped?bus.tdxName:bus.userLabel;
-  // TTS must be called synchronously first — never block it with async
-  speak(`${nm}目前已經到達${stop}，距離您的站牌還有${away}站，請準備上車`);
-  vibrate([300,100,300]);
-  // Fire-and-forget: notification is async but we never await it here
-  sendNotif(`🚌 ${nm} 距您 ${away} 站`,`公車目前位置：${stop}，請準備上車`).catch(()=>{});
+/* ══════════════════════════════════════════
+   VOICE MODE SYSTEM
+   Mode '1'    → TTS 男聲
+   Mode '2'    → TTS 女聲（預設）
+   Mode '1212' → 混合：固定詞用 MP3，路線名/站名/數字用 TTS
+
+   MP3 結構：./audio/male/{phrase}.mp3
+   檔名對照（= 錄製文字）：
+     目前已經到達.mp3
+     距離您的站牌還有.mp3
+     站請準備上車.mp3
+     已經到達.mp3
+     請立刻準備上車.mp3
+     您已經上車祝您旅程愉快.mp3
+     已經過站請等待下一班車.mp3
+══════════════════════════════════════════ */
+
+// MP3 phrase keys
+const MP3 = {
+  arrived_at:   '目前已經到達',
+  stops_away:   '距離您的站牌還有',
+  stop_prepare: '站請準備上車',
+  reached:      '已經到達',
+  board_now:    '請立刻準備上車',
+  boarded:      '您已經上車祝您旅程愉快',
+  missed:       '已經過站請等待下一班車',
+};
+const _mp3Cache = {};
+
+function mp3Path(key) {
+  return `./audio/male/${encodeURIComponent(MP3[key])}.mp3`;
 }
 
-function announceArrived(bus,stop) {
-  const nm=bus.isMapped?bus.tdxName:bus.userLabel;
-  // TTS first, synchronous
-  speak(`${nm}已經到達${stop}，請立刻準備上車`);
-  vibrate([200,100,200,100,400]);
-  showOverlay(nm,stop);
-  sendNotif(`✅ ${nm} 已到站！`,`公車已抵達「${stop}」，請立刻上車！`,true).catch(()=>{});
+function preloadMp3() {
+  Object.keys(MP3).forEach(k => {
+    if (_mp3Cache[k]) return;
+    const a = new Audio(mp3Path(k));
+    a.preload = 'auto';
+    _mp3Cache[k] = a;
+  });
 }
 
-function speak(text) {
-  S.speechQueue.push(text);
-  if (!S.speaking) drain();
+function setVoiceMode(mode, silent) {
+  lsSet('voice_mode', mode);
+  // Update button states
+  document.querySelectorAll('[data-vmode]').forEach(b => {
+    b.classList.toggle('active', b.dataset.vmode === mode);
+  });
+  // Description text
+  const desc = document.getElementById('voiceModeDesc');
+  if (desc) {
+    if (mode === '1')    desc.textContent = '使用系統 TTS 男聲播報';
+    if (mode === '2')    desc.textContent = '使用系統 TTS 女聲播報（預設）';
+    if (mode === '1212') desc.textContent = '固定詞彙使用 MP3 音檔，站名由 TTS 合成';
+  }
+  if (mode === '1212') preloadMp3();
+  if (!silent) toast(mode==='1'?'👨 男聲模式':mode==='2'?'👩 女聲模式':'🎙️ 混合播報模式');
 }
 
-function drain() {
-  if (!S.speechQueue.length) { S.speaking=false; return; }
-  S.speaking=true;
-  const text=S.speechQueue.shift();
-  if (!window.speechSynthesis) { toast('🔊 '+text.slice(0,30)); S.speaking=false; drain(); return; }
+// ── TTS helper: speak one utterance, call onDone when finished ──
+function tts(text, onDone, malePitch) {
+  if (!window.speechSynthesis) { onDone && onDone(); return; }
   window.speechSynthesis.cancel();
-  const go=()=>{
-    const u=new SpeechSynthesisUtterance(text);
-    u.lang='zh-TW'; u.rate=0.88; u.pitch=1.0; u.volume=1.0;
-    const vs=window.speechSynthesis.getVoices();
-    const v=vs.find(x=>x.lang==='zh-TW')||vs.find(x=>x.lang.startsWith('zh'))||null;
-    if(v) u.voice=v;
-    u.onend=u.onerror=()=>{ S.speaking=false; setTimeout(drain,600); };
+  const go = () => {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'zh-TW'; u.rate = 0.88; u.volume = 1.0;
+    const mode = ls('voice_mode') || '2';
+    const vs = window.speechSynthesis.getVoices();
+    if (mode === '1' || malePitch) {
+      // Male: prefer zh-TW male voice, fallback pitch adjustment
+      const v = vs.find(x => x.lang==='zh-TW' && /male|男/i.test(x.name))
+             || vs.find(x => x.lang==='zh-TW')
+             || vs.find(x => x.lang.startsWith('zh')) || null;
+      if (v) u.voice = v;
+      u.pitch = 0.75; // lower pitch for male
+    } else {
+      const v = vs.find(x => x.lang==='zh-TW' && /female|女/i.test(x.name))
+             || vs.find(x => x.lang==='zh-TW')
+             || vs.find(x => x.lang.startsWith('zh')) || null;
+      if (v) u.voice = v;
+      u.pitch = 1.1; // slightly higher for female
+    }
+    u.onend = u.onerror = () => { onDone && onDone(); };
     window.speechSynthesis.speak(u);
   };
-  if (window.speechSynthesis.getVoices().length>0) go();
+  if (window.speechSynthesis.getVoices().length > 0) go();
   else {
-    window.speechSynthesis.onvoiceschanged=()=>{ window.speechSynthesis.onvoiceschanged=null; go(); };
-    setTimeout(go,600);
+    window.speechSynthesis.onvoiceschanged = () => {
+      window.speechSynthesis.onvoiceschanged = null; go();
+    };
+    setTimeout(go, 500);
+  }
+}
+
+// ── MP3 helper: play one file, call onDone when finished ──
+function playMp3(key, onDone) {
+  let a = _mp3Cache[key];
+  if (!a) { a = new Audio(mp3Path(key)); _mp3Cache[key] = a; }
+  a.currentTime = 0;
+  a.onended = () => { onDone && onDone(); };
+  a.onerror = () => { onDone && onDone(); }; // fallback if file missing
+  a.play().catch(() => { onDone && onDone(); });
+}
+
+// ── Speech queue: each item is a function that accepts a "done" callback ──
+// This allows mixing async MP3 + TTS in sequence
+const _sQueue = [];
+let _sRunning = false;
+
+function enqueue(fn) {
+  _sQueue.push(fn);
+  if (!_sRunning) drainQueue();
+}
+
+function drainQueue() {
+  if (!_sQueue.length) { _sRunning = false; return; }
+  _sRunning = true;
+  const fn = _sQueue.shift();
+  fn(() => setTimeout(drainQueue, 400));
+}
+
+// ── Public API ──
+function speak(text) {
+  // Legacy: plain TTS (mode 1 or 2)
+  enqueue(done => tts(text, done));
+}
+
+function announceApproach(bus, away, stop) {
+  const nm = bus.isMapped ? bus.tdxName : bus.userLabel;
+  vibrate([300,100,300]);
+  sendNotif(`🚌 ${nm} 距您 ${away} 站`, `公車目前位置：${stop}，請準備上車`).catch(()=>{});
+
+  if (ls('voice_mode') === '1212') {
+    // Hybrid: [TTS: nm] [MP3: 目前已經到達] [TTS: stop] [MP3: 距離您的站牌還有] [TTS: away] [MP3: 站請準備上車]
+    enqueue(done => tts(nm, done));
+    enqueue(done => playMp3('arrived_at', done));
+    enqueue(done => tts(stop, done));
+    enqueue(done => playMp3('stops_away', done));
+    enqueue(done => tts(`${away}`, done));
+    enqueue(done => playMp3('stop_prepare', done));
+  } else {
+    enqueue(done => tts(`${nm}目前已經到達${stop}，距離您的站牌還有${away}站，請準備上車`, done));
+  }
+}
+
+function announceArrived(bus, stop) {
+  const nm = bus.isMapped ? bus.tdxName : bus.userLabel;
+  vibrate([200,100,200,100,400]);
+  showOverlay(nm, stop);
+  sendNotif(`✅ ${nm} 已到站！`, `公車已抵達「${stop}」，請立刻上車！`, true).catch(()=>{});
+
+  if (ls('voice_mode') === '1212') {
+    // Hybrid: [TTS: nm] [MP3: 已經到達] [TTS: stop] [MP3: 請立刻準備上車]
+    enqueue(done => tts(nm, done));
+    enqueue(done => playMp3('reached', done));
+    enqueue(done => tts(stop, done));
+    enqueue(done => playMp3('board_now', done));
+  } else {
+    enqueue(done => tts(`${nm}已經到達${stop}，請立刻準備上車`, done));
+  }
+}
+
+// Boarding detection audio (called from startBoardingCheck)
+function announceBoarded() {
+  if (ls('voice_mode') === '1212') {
+    enqueue(done => playMp3('boarded', done));
+  } else {
+    enqueue(done => tts('您已經上車，祝您旅程愉快', done));
+  }
+}
+
+function announceMissed(nm) {
+  if (ls('voice_mode') === '1212') {
+    enqueue(done => tts(nm, done));
+    enqueue(done => playMp3('missed', done));
+  } else {
+    enqueue(done => tts(`${nm}，已經過站，請等待下一班車`, done));
   }
 }
 
 function testSpeech() {
   unlockAudio();
-  speak('測試語音。基隆路幹線目前已經到達台北車站，距離您的站牌還有3站，請準備上車');
+  if (ls('voice_mode') === '1212') {
+    enqueue(done => tts('基隆路幹線', done));
+    enqueue(done => playMp3('arrived_at', done));
+    enqueue(done => tts('台北車站', done));
+    enqueue(done => playMp3('stops_away', done));
+    enqueue(done => tts('3', done));
+    enqueue(done => playMp3('stop_prepare', done));
+  } else {
+    enqueue(done => tts('基隆路幹線目前已經到達台北車站，距離您的站牌還有3站，請準備上車', done));
+  }
 }
 
 function vibrate(pat){ try{ navigator.vibrate?.(pat||[300,100,300]); }catch(e){} }
