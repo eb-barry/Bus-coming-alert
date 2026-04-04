@@ -411,10 +411,10 @@ input:focus,select:focus{border-color:var(--P);}
       <button class="kbd-key"         onclick="kp('0')">0</button>
       <button class="kbd-key del"     onclick="kbDel()">⌫</button>
       <button class="kbd-key del" style="font-size:0.8rem" onclick="kbClear()">清除</button>
-      <!-- Row 5: 查詢 | 開始監控 | 加入監控 — equal thirds -->
-      <button class="kbd-key search-btn" style="grid-column:span 1;font-size:0.82rem" onclick="doLookup()" id="kbdQueryBtn">🔍 查詢</button>
-      <button class="kbd-key" style="grid-column:span 2;background:#c1121f;color:#fff;border-color:#c1121f;font-size:0.82rem;letter-spacing:0" id="kbdStartBtn" onclick="startMonitorFromQueue()">🔴 開始監控</button>
-      <button class="kbd-key" style="grid-column:span 2;background:#2d6a4f;color:#fff;border-color:#2d6a4f;font-size:0.78rem" id="kbdAddBtn" onclick="queueBus()" disabled>➕ 加入監控</button>
+      <!-- Row 5: 儲存路線 | 清除全部 | 查詢 -->
+      <button class="kbd-key btn-sm" style="grid-column:span 1;font-size:0.78rem;background:var(--P);color:#fff;border-color:var(--P)" id="kbdSaveBtn" onclick="saveFav()">⭐ 儲存</button>
+      <button class="kbd-key btn-sm" style="grid-column:span 2;font-size:0.78rem;background:transparent;color:var(--ERR);border-color:var(--ERR)" onclick="clearAll()">🗑️ 清除全部</button>
+      <button class="kbd-key search-btn" style="grid-column:span 2;font-size:0.82rem" onclick="doLookup()" id="kbdQueryBtn">🔍 查詢</button>
     </div>
 
     <!-- Trunk line inline grid (shown when user presses 幹線 key) -->
@@ -450,15 +450,10 @@ input:focus,select:focus{border-color:var(--P);}
     📡 監控中
     <span style="margin-left:auto;font-size:0.78rem;font-weight:400" id="cdLbl"></span>
   </div>
-  <div class="sec-bd">
-    <div class="btags" id="btags"></div>
+  <div class="sec-bd" style="padding:10px 16px">
     <div class="refresh-badge" id="refreshBadge" style="display:none">
       <div class="rb-dot"></div>
       <span id="refreshTxt"></span>
-    </div>
-    <div class="btn-row">
-      <button class="btn-sm" onclick="saveFav()">⭐ 儲存路線</button>
-      <button class="btn-danger" onclick="clearAll()">🗑️ 清除全部</button>
     </div>
   </div>
 </div>
@@ -686,6 +681,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPrefs();
   renderFavList();
   checkPWA();
+  updateSaveBtn();
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js')
       .then(reg => {
@@ -815,8 +811,6 @@ function kp(ch) {
   S.pendingRoute=null; S.pendingDir=null;
   document.getElementById('dirSection').style.display='none';
   document.getElementById('confirmCard').style.display='none';
-  const _rlab=document.getElementById('kbdAddBtn');
-  if (_rlab) { _rlab.disabled=true; _rlab.style.opacity='0.45'; }
 }
 
 function kbDel() {
@@ -837,7 +831,6 @@ function resetLookup() {
   document.getElementById('dirSection').style.display='none';
   document.getElementById('confirmCard').style.display='none';
   const ti=document.getElementById('trunkInline'); if(ti) ti.style.display='none';
-  const ab=document.getElementById('kbdAddBtn'); if(ab){ab.disabled=true;ab.style.opacity='0.45';}
 }
 
 /* ── Trunk line picker ── */
@@ -999,8 +992,6 @@ async function doLookup() {
   qBtn.innerHTML='<span class="sp"></span>';
   qBtn.disabled=true;
   S.pendingRoute=null; S.pendingDir=null;
-  const _ab=document.getElementById('kbdAddBtn');
-  if (_ab) { _ab.disabled=true; _ab.style.opacity='0.45'; }
 
   try {
     const {route,city}=await fetchRoute(resolved.tdxName);
@@ -1039,21 +1030,60 @@ function selDir(dir,from,to) {
   S.pendingDir=dir;
   document.querySelectorAll('.dir-card').forEach(c=>c.classList.remove('sel'));
   document.getElementById('dc_'+dir)?.classList.add('sel');
+  // Auto-add route and start monitoring immediately — no extra button needed
+  addAndMonitor();
+}
 
-  const {resolved}=S.pendingRoute;
-  const displayName=resolved.isMapped
-    ? `${resolved.tdxName}（您輸入：${S.kbuf}）`
-    : S.kbuf;
+async function addAndMonitor() {
+  if (!S.kbuf||S.pendingDir===null||!S.pendingRoute) return;
+  unlockAudio();
 
-  document.getElementById('confirmCard').style.display='block';
-  document.getElementById('confirmCard').innerHTML=`
-    <div class="cc">
-      <div class="cc-route">🚌 ${displayName}（${dir===0?'去程':'返程'}）</div>
-      <div class="cc-row" style="color:var(--SUC)">🟢 從 ${from}</div>
-      <div class="cc-row" style="color:var(--ERR)">🔴 往 ${to}</div>
-    </div>`;
-  const ab = document.getElementById('kbdAddBtn');
-  if (ab) { ab.disabled=false; ab.style.opacity='1'; }
+  const {route,city,resolved}=S.pendingRoute;
+  const dir=S.pendingDir;
+  const tdxName=resolved.tdxName;
+  const userLabel=S.kbuf;
+
+  // Duplicate check
+  const allRoutes=[...S.busQueue,...S.buses];
+  if (allRoutes.find(b=>b.tdxName===tdxName&&b.dir===dir)) {
+    toast('此路線已在監控中'); resetLookup(); S.kbuf=''; updateKbDisplay(); return;
+  }
+  if (allRoutes.length>=8) { toast('最多同時監控 8 條路線'); return; }
+
+  // Show brief loading state on query button
+  const qBtn=document.querySelector('.kbd-key.search-btn');
+  if (qBtn) { qBtn.innerHTML='<span class="sp"></span>'; qBtn.disabled=true; }
+
+  try {
+    const stops=await fetchStops(city,tdxName,dir);
+    const dep=route.DepartureStopNameZh||'—';
+    const dest=route.DestinationStopNameZh||'—';
+
+    const entry={
+      userLabel, tdxName,
+      isMapped:resolved.isMapped,
+      dir, city, routeId:route.RouteUID,
+      startStop:dir===0?dep:dest,
+      endStop:dir===0?dest:dep,
+      stops, nearSeq:null,
+    };
+    if (S.lat) calcNearest(entry);
+    S.buses.push(entry);
+
+    // Reset input
+    S.kbuf=''; updateKbDisplay(); resetLookup();
+    if (qBtn) { qBtn.innerHTML='🔍 查詢'; qBtn.disabled=false; }
+
+    const label=resolved.isMapped?`${tdxName}（${userLabel}路）`:userLabel;
+    toast(`✅ ${label} 往 ${entry.endStop} — 開始監控`);
+
+    renderMonitor();
+    updateSaveBtn();
+    if (!S.monitoring) startMonitor(); else fetchAll();
+  } catch(e) {
+    toast('❌ '+e.message);
+    if (qBtn) { qBtn.innerHTML='🔍 查詢'; qBtn.disabled=false; }
+  }
 }
 
 function esc(s){ return (s||'').replace(/'/g,"&#39;"); }
@@ -1075,8 +1105,6 @@ async function queueBus() {
   if (allRoutes.find(b=>b.tdxName===tdxName&&b.dir===dir)) { toast('此路線已在清單中'); return; }
   if (allRoutes.length>=8) { toast('最多同時監控 8 條路線'); return; }
 
-  const btn=document.getElementById('kbdAddBtn');
-  if (btn) { btn.innerHTML='<span class="sp"></span>'; btn.disabled=true; }
 
   try {
     const stops=await fetchStops(city,tdxName,dir);
@@ -1096,14 +1124,12 @@ async function queueBus() {
     // Reset keyboard
     S.kbuf=''; updateKbDisplay();
     resetLookup();
-    if (btn) { btn.innerHTML='➕ 加入監控'; btn.disabled=true; btn.style.opacity='0.45'; }
 
     const label=resolved.isMapped?`${tdxName}（${userLabel}路）`:userLabel;
     toast(`✅ 已加入清單：${label} 往 ${entry.endStop}`);
     renderQueue();
   } catch(e) {
     toast('❌ '+e.message);
-    if (btn) { btn.innerHTML='➕ 加入監控'; btn.disabled=false; btn.style.opacity='1'; }
   }
 }
 
@@ -1166,7 +1192,7 @@ function removeActiveBus(i) {
 
 function clearAll() {
   S.busQueue=[]; S.buses=[]; S.arrived.clear(); S.lastAlert={};
-  stopMonitor(); renderMonitor(); renderQueue(); toast('已清除全部路線');
+  stopMonitor(); renderMonitor(); renderQueue(); updateSaveBtn(); toast('已清除全部路線');
 }
 
 /* ══════════════════════════════════════════
@@ -1429,7 +1455,6 @@ async function fetchAll() {
   if (prev!==S.currentInterval) scheduleNext();
 
   renderAlerts(results);
-  renderBusTags();
 
   // Auto-remove individually arrived routes after 8s (save API calls)
   for (const bus of S.buses) {
@@ -1557,35 +1582,22 @@ function renderMonitor() {
   if (!S.buses.length) {
     sec.style.display='none';
     if (!S.busQueue.length) document.getElementById('alertSec').style.display='none';
+    updateSaveBtn();
     return;
   }
   sec.style.display='block';
-  renderBusTags();
-  renderQueue();
+  updateSaveBtn();
 }
 
-function renderBusTags() {
-  const c=document.getElementById('btags');
-  if (!S.buses.length) { c.innerHTML='<div class="empty">尚未加入任何公車</div>'; return; }
-  const lim=parseInt(document.getElementById('alertStops').value);
-  c.innerHTML=S.buses.map((b,i)=>{
-    const key=b.tdxName+'_'+b.dir;
-    const arrived=S.arrived.has(key);
-    const al=S.lastAlert[key];
-    const alerting=!arrived&&al&&al.away<=lim;
-    const cls=arrived?'arrived':alerting?'alerting':'';
-    const stat=arrived?'✅ 已到站':al?`距您 ${al.away} 站`:'監控中…';
-    const nm=b.isMapped?b.tdxName:b.userLabel;
-    return `<div class="btag ${cls}">
-      <div class="bt-top">
-        <span class="bt-num">🚌 ${nm}</span>
-        <button class="bt-rm" onclick="removeBus(${i})">✕</button>
-      </div>
-      <div class="bt-dest">往 ${b.endStop}</div>
-      <div class="bt-stat">${stat}</div>
-    </div>`;
-  }).join('');
+function updateSaveBtn() {
+  const btn=document.getElementById('kbdSaveBtn');
+  if (!btn) return;
+  const hasRoutes=S.buses.length>0||S.busQueue.length>0;
+  btn.disabled=!hasRoutes;
+  btn.style.opacity=hasRoutes?'1':'0.4';
 }
+
+function renderBusTags() { /* btags removed — status shown in alert cards */ }
 
 function updateStatus() {
   // Status reflected in GPS pill (header) — no separate status bar
