@@ -1,7 +1,12 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v4';
-const STATIC = ['./', './index.html', './manifest.json'];
+const CACHE = 'bus-alert-v5';  // bumped: new icons
+const STATIC = [
+  './', './index.html', './manifest.json', './sw.js',
+  './apple-touch-icon.png',
+  './icon-180.png', './icon-192.png', './icon-512.png',
+  './icon-152.png', './icon-144.png', './icon-167.png',
+];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
