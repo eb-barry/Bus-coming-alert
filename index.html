@@ -326,6 +326,21 @@ input:focus,select:focus{border-color:var(--P);}
 .pwa-b.show{display:flex;}
 .pwa-bc{background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;}
 
+/* Toggle switch */
+.toggle-switch{position:relative;display:inline-block;width:52px;height:28px;flex-shrink:0;}
+.toggle-switch input{opacity:0;width:0;height:0;}
+.toggle-slider{
+  position:absolute;cursor:pointer;inset:0;
+  background:var(--BD);border-radius:28px;transition:0.3s;
+}
+.toggle-slider:before{
+  position:absolute;content:"";width:20px;height:20px;
+  left:4px;bottom:4px;background:#fff;border-radius:50%;
+  transition:0.3s;box-shadow:0 1px 4px rgba(0,0,0,0.2);
+}
+.toggle-switch input:checked + .toggle-slider{background:var(--SUC);}
+.toggle-switch input:checked + .toggle-slider:before{transform:translateX(24px);}
+
 /* Spinner */
 .sp{display:inline-block;width:16px;height:16px;border:2.5px solid rgba(255,255,255,0.4);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;}
 .sp-d{display:inline-block;width:16px;height:16px;border:2.5px solid rgba(26,86,160,0.25);border-top-color:var(--P);border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;}
@@ -575,6 +590,23 @@ input:focus,select:focus{border-color:var(--P);}
       <div class="divider"></div>
 
       <div class="form-row">
+        <label>📳 鍵盤震動回饋</label>
+        <div style="display:flex;align-items:center;gap:14px">
+          <label class="toggle-switch">
+            <input type="checkbox" id="kbdVibrateToggle"
+              onchange="setKbdVibrate(this.checked)">
+            <span class="toggle-slider"></span>
+          </label>
+          <span id="kbdVibrateLabel" style="font-size:0.85rem;color:var(--TX2)">關閉</span>
+        </div>
+        <div style="font-size:0.75rem;color:var(--TX2);margin-top:5px;line-height:1.5">
+          開啟後，點擊公車鍵盤時手機會短暫震動，確認按鍵成功
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-row">
         <label>🔊 語音測試（iOS 請先按此解鎖音訊）</label>
         <button class="btn btn-P" onclick="testSpeech()">播放測試語音</button>
       </div>
@@ -784,6 +816,18 @@ function loadPrefs() {
   document.getElementById('alertStops').value = ls('alert_stops') || '5';
   setFont(ls('font_size') || 'large', true);
   setVoiceMode(ls('voice_mode') || '2', true); // default: female TTS
+  // Keyboard vibration — init after DOM ready
+  setTimeout(() => setKbdVibrate(ls('kbd_vibrate') === '1', true), 0);
+}
+
+function setKbdVibrate(enabled, silent) {
+  lsSet('kbd_vibrate', enabled ? '1' : '0');
+  const toggle = document.getElementById('kbdVibrateToggle');
+  const label  = document.getElementById('kbdVibrateLabel');
+  if (toggle) toggle.checked = enabled;
+  if (label)  label.textContent = enabled ? '開啟' : '關閉';
+  if (label)  label.style.color = enabled ? 'var(--SUC)' : 'var(--TX2)';
+  if (!silent) toast(enabled ? '📳 鍵盤震動已開啟' : '📳 鍵盤震動已關閉');
 }
 function savePrefs() {
   lsSet('alert_stops', document.getElementById('alertStops').value);
@@ -864,6 +908,10 @@ function resolveBusName(raw) {
 ══════════════════════════════════════════ */
 function kp(ch) {
   unlockAudio(); // every key press unlocks audio
+  // Short haptic vibration feedback if enabled
+  if (ls('kbd_vibrate') === '1') {
+    try { navigator.vibrate?.(30); } catch(e) {}
+  }
   if (S.kbuf.length >= 8) return;
   // Allow only one Chinese character prefix (first char)
   const isChinese = /[\u4e00-\u9fff]/.test(ch);
@@ -881,12 +929,14 @@ function kp(ch) {
 }
 
 function kbDel() {
+  if (ls('kbd_vibrate') === '1') try { navigator.vibrate?.(20); } catch(e) {}
   S.kbuf = S.kbuf.slice(0,-1);
   updateKbDisplay();
   resetLookup();
 }
 
 function kbClear() {
+  if (ls('kbd_vibrate') === '1') try { navigator.vibrate?.(50); } catch(e) {}
   S.kbuf = '';
   updateKbDisplay();
   resetLookup();
@@ -1797,6 +1847,17 @@ function checkHiddenMode(val) {
 }
 
 // ── TTS helper: speak one utterance, call onDone when finished ──
+// Convert digits in a string to Chinese characters for digit-by-digit TTS reading
+// e.g. "647" → "六四七",  "綠5" → "綠五",  "3" → "三"
+// Non-digit characters (Chinese, letters) are kept unchanged
+const DIGIT_ZH = ['零','一','二','三','四','五','六','七','八','九'];
+
+function digitToZh(text) {
+  // Only convert pure digit sequences (route number context)
+  // Preserve Chinese characters and letters unchanged
+  return String(text).replace(/[0-9]/g, d => DIGIT_ZH[parseInt(d)]);
+}
+
 function tts(text, onDone, malePitch) {
   if (!window.speechSynthesis) { onDone && onDone(); return; }
   window.speechSynthesis.cancel();
@@ -1908,36 +1969,37 @@ function speak(text) {
 
 function announceApproach(bus, away, stop) {
   const nm = bus.isMapped ? bus.tdxName : bus.userLabel;
+  const nmTts = digitToZh(nm);   // e.g. "647" → "六四七"
+  const awayTts = digitToZh(String(away));
   vibrate([300,100,300]);
   sendNotif(`🚌 ${nm} 距您 ${away} 站`, `公車目前位置：${stop}，請準備上車`).catch(()=>{});
 
   if (ls('voice_mode') === '1212') {
-    // Hybrid: [TTS: nm] [MP3: 目前已經到達] [TTS: stop] [MP3: 距離您的站牌還有] [TTS: away] [MP3: 站請準備上車]
-    enqueue(done => tts(nm, done));
+    enqueue(done => tts(nmTts, done));
     enqueue(done => playMp3('arrived_at', done));
     enqueue(done => tts(stop, done));
     enqueue(done => playMp3('stops_away', done));
-    enqueue(done => tts(`${away}`, done));
+    enqueue(done => tts(awayTts, done));
     enqueue(done => playMp3('stop_prepare', done));
   } else {
-    enqueue(done => tts(`${nm}目前已經到達${stop}，距離您的站牌還有${away}站，請準備上車`, done));
+    enqueue(done => tts(`${nmTts}目前已經到達${stop}，距離您的站牌還有${awayTts}站，請準備上車`, done));
   }
 }
 
 function announceArrived(bus, stop) {
   const nm = bus.isMapped ? bus.tdxName : bus.userLabel;
+  const nmTts = digitToZh(nm);
   vibrate([200,100,200,100,400]);
   showOverlay(nm, stop);
   sendNotif(`✅ ${nm} 已到站！`, `公車已抵達「${stop}」，請立刻上車！`, true).catch(()=>{});
 
   if (ls('voice_mode') === '1212') {
-    // Hybrid: [TTS: nm] [MP3: 已經到達] [TTS: stop] [MP3: 請立刻準備上車]
-    enqueue(done => tts(nm, done));
+    enqueue(done => tts(nmTts, done));
     enqueue(done => playMp3('reached', done));
     enqueue(done => tts(stop, done));
     enqueue(done => playMp3('board_now', done));
   } else {
-    enqueue(done => tts(`${nm}已經到達${stop}，請立刻準備上車`, done));
+    enqueue(done => tts(`${nmTts}已經到達${stop}，請立刻準備上車`, done));
   }
 }
 
@@ -1951,11 +2013,12 @@ function announceBoarded() {
 }
 
 function announceMissed(nm) {
+  const nmTts = digitToZh(nm);
   if (ls('voice_mode') === '1212') {
-    enqueue(done => tts(nm, done));
+    enqueue(done => tts(nmTts, done));
     enqueue(done => playMp3('missed', done));
   } else {
-    enqueue(done => tts(`${nm}，已經過站，請等待下一班車`, done));
+    enqueue(done => tts(`${nmTts}，已經過站，請等待下一班車`, done));
   }
 }
 
@@ -1969,7 +2032,7 @@ function testSpeech() {
     enqueue(done => tts('3', done));
     enqueue(done => playMp3('stop_prepare', done));
   } else {
-    enqueue(done => tts('基隆路幹線目前已經到達台北車站，距離您的站牌還有3站，請準備上車', done));
+    enqueue(done => tts(`基隆路幹線目前已經到達台北車站，距離您的站牌還有${digitToZh('3')}站，請準備上車`, done));
   }
 }
 
