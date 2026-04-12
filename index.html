@@ -361,6 +361,12 @@ input:focus,select:focus{border-color:var(--P);}
 <body>
 
 <!-- PWA banner -->
+<!-- iOS haptic trigger: hidden switch checkbox (iOS 18+ only web-haptic method) -->
+<label id="hapticLabel" for="hapticSwitch"
+  style="position:fixed;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;top:-9999px">
+  <input type="checkbox" id="hapticSwitch" switch>
+</label>
+
 <div class="pwa-b" id="pwaBanner">
   <span style="font-size:1.2rem">📲</span>
   <span style="flex:1;line-height:1.5">加入主畫面可獲得最佳背景提醒效果！<br>請點選瀏覽器「加入主畫面」</span>
@@ -908,10 +914,7 @@ function resolveBusName(raw) {
 ══════════════════════════════════════════ */
 function kp(ch) {
   unlockAudio(); // every key press unlocks audio
-  // Short haptic vibration feedback if enabled
-  if (ls('kbd_vibrate') === '1') {
-    try { navigator.vibrate?.(30); } catch(e) {}
-  }
+  kbdHaptic(); // haptic feedback if enabled in settings
   if (S.kbuf.length >= 8) return;
   // Allow only one Chinese character prefix (first char)
   const isChinese = /[\u4e00-\u9fff]/.test(ch);
@@ -929,14 +932,14 @@ function kp(ch) {
 }
 
 function kbDel() {
-  if (ls('kbd_vibrate') === '1') try { navigator.vibrate?.(20); } catch(e) {}
+  kbdHaptic();
   S.kbuf = S.kbuf.slice(0,-1);
   updateKbDisplay();
   resetLookup();
 }
 
 function kbClear() {
-  if (ls('kbd_vibrate') === '1') try { navigator.vibrate?.(50); } catch(e) {}
+  kbdHaptic();
   S.kbuf = '';
   updateKbDisplay();
   resetLookup();
@@ -2036,7 +2039,49 @@ function testSpeech() {
   }
 }
 
-function vibrate(pat){ try{ navigator.vibrate?.(pat||[300,100,300]); }catch(e){} }
+/* ── Unified haptic/vibration functions ──
+   Android: navigator.vibrate() works normally
+   iOS 18+: use hidden <input switch> click() for haptic feedback
+   iOS <18 / Safari: no haptic available on web (system limitation)
+*/
+function vibrate(pat) {
+  // Android or non-iOS
+  if (!IS_IOS) {
+    try { navigator.vibrate?.(pat || [300,100,300]); } catch(e) {}
+    return;
+  }
+  // iOS: use switch checkbox haptic (short pulse per vibrate call)
+  iosHaptic();
+}
+
+// iOS haptic via switch checkbox — triggers UIImpactFeedbackGenerator
+function iosHaptic() {
+  try {
+    const sw = document.getElementById('hapticSwitch');
+    const lb = document.getElementById('hapticLabel');
+    if (!sw || !lb) return;
+    // Temporarily enable pointer events and trigger click
+    lb.style.pointerEvents = 'auto';
+    lb.style.position = 'fixed';
+    lb.style.top = '50%';
+    lb.style.left = '50%';
+    lb.click();
+    // Re-hide after tick
+    requestAnimationFrame(() => {
+      lb.style.pointerEvents = 'none';
+      lb.style.top = '-9999px';
+    });
+  } catch(e) {}
+}
+
+function kbdHaptic() {
+  if (ls('kbd_vibrate') !== '1') return;
+  if (IS_IOS) {
+    iosHaptic();
+  } else {
+    try { navigator.vibrate?.(30); } catch(e) {}
+  }
+}
 
 function showOverlay(nm,stop) {
   document.getElementById('ovTitle').textContent=`🚌 ${nm} 到站！`;
