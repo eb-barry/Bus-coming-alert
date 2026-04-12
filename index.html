@@ -477,9 +477,19 @@ input:focus,select:focus{border-color:var(--P);}
 <div class="sec" id="alertSec" style="display:none">
   <div class="sec-hd" style="background:var(--ERR);flex-wrap:wrap;gap:4px">
     <span>🔔 即時到站狀況</span>
-    <span style="margin-left:auto;font-size:0.75rem;font-weight:400;opacity:0.9;display:flex;align-items:center;gap:6px">
+    <span style="margin-left:auto;font-size:0.75rem;font-weight:400;opacity:0.9;display:flex;align-items:center;gap:10px">
       <span id="refreshTxt" style="display:none"></span>
       <span id="cdLbl"></span>
+      <!-- Speaker on/off toggle — session only, resets to ON on restart -->
+      <button id="speakerBtn" onclick="toggleSpeaker()"
+        title="語音播報開關"
+        style="background:rgba(255,255,255,0.18);border:2px solid rgba(255,255,255,0.5);
+               color:#fff;border-radius:50%;width:38px;height:38px;
+               font-size:1.2rem;cursor:pointer;display:flex;align-items:center;
+               justify-content:center;flex-shrink:0;touch-action:manipulation;
+               transition:background 0.15s,opacity 0.15s">
+        🔊
+      </button>
     </span>
   </div>
   <div class="sec-bd">
@@ -733,6 +743,7 @@ const S = {
   timerId:null, countdown:60, currentInterval:INTERVAL_FAR,
   lastAlert:{}, arrived:new Set(),
   audioUnlocked:false,
+  voiceOn:true,  // session-only speech toggle, always ON at startup
   wakeLock:null,
   swReg:null,  // ServiceWorkerRegistration — stored on init
   pendingRoute:null, pendingDir:null,
@@ -1943,6 +1954,7 @@ const _sQueue = [];
 let _sRunning = false;
 
 function enqueue(fn) {
+  if (!S.voiceOn) return; // voice toggled off — skip silently
   _sQueue.push(fn);
   if (!_sRunning) drainQueue();
 }
@@ -2347,6 +2359,29 @@ function delFav(id) {
 /* ══════════════════════════════════════════
    UI HELPERS
 ══════════════════════════════════════════ */
+function toggleSpeaker() {
+  S.voiceOn = !S.voiceOn;
+  const btn = document.getElementById('speakerBtn');
+  if (!btn) return;
+  if (S.voiceOn) {
+    btn.textContent = '🔊';
+    btn.style.opacity = '1';
+    btn.style.background = 'rgba(255,255,255,0.18)';
+    btn.title = '語音播報開啟（點擊關閉）';
+    toast('🔊 語音播報已開啟');
+  } else {
+    btn.textContent = '🔇';
+    btn.style.opacity = '0.7';
+    btn.style.background = 'rgba(0,0,0,0.25)';
+    btn.title = '語音播報關閉（點擊開啟）';
+    // Cancel any ongoing speech immediately
+    window.speechSynthesis?.cancel();
+    _sQueue.length = 0;
+    _sRunning = false;
+    toast('🔇 語音播報已關閉');
+  }
+}
+
 function openSettings(){
   // Show masking badges — inputs start empty, show masked indicator
   maskCredInput('cfgId', 'tdx_id');
