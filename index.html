@@ -1100,30 +1100,101 @@ async function apiFetch(path) {
 }
 
 /* ══════════════════════════════════════════
-   ROUTE FETCH — City + Intercity
-   Returns: {route, city}
-     city = 'Taipei' | 'NewTaipei' | 'Intercity'
-   If Intercity has multiple operators for same route number,
-   returns {routes:[], city:'Intercity'} for user selection
+   ROUTE FETCH — Smart routing:
+   - Pure 4-digit number → intercity FIRST (公路客運)
+   - Other inputs        → city buses first, intercity fallback
+   Returns: {route, city} or {routes, city, multiRoute:true}
 ══════════════════════════════════════════ */
+
+// Helper: normalise TDX API array response (handles {value:[]} wrapper)
+function tdxArr(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.value)) return data.value;
+  return [];
+}
+
+// Dedicated intercity search — exhaustive 4-step approach
+async function fetchIntercity(t) {
+  let data = [];
+
+  // Step A: path param  /v2/Bus/Route/Intercity/{RouteName}
+  try {
+    data = tdxArr(await apiFetch(
+      `/v2/Bus/Route/Intercity/${encodeURIComponent(t)}?$format=JSON`
+    ));
+  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+
+  // Step B: SubRoute endpoint  /v2/Bus/SubRoute/Intercity/{SubRouteName}
+  // TDX stores some intercity routes under SubRoute (e.g. 1968A, 1968B)
+  // We query the number and collect parent routes from the result
+  if (data.length === 0) {
+    try {
+      const sub = tdxArr(await apiFetch(
+        `/v2/Bus/SubRoute/Intercity/${encodeURIComponent(t)}?$format=JSON`
+      ));
+      if (sub.length > 0) {
+        // SubRoute result → synthesise minimal route objects for display
+        // Each SubRoute has: SubRouteUID, SubRouteName, RouteUID, RouteName,
+        //   DepartureStopNameZh, DestinationStopNameZh, OperatorName
+        data = sub.map(s => ({
+          RouteUID:              s.RouteUID,
+          RouteName:             s.RouteName || s.SubRouteName,
+          SubRouteName:          s.SubRouteName,
+          SubRouteUID:           s.SubRouteUID,
+          DepartureStopNameZh:   s.DepartureStopNameZh,
+          DestinationStopNameZh: s.DestinationStopNameZh,
+          OperatorName:          s.OperatorName,
+          _fromSubRoute:         true,
+        }));
+      }
+    } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+  }
+
+  // Step C: OData $filter on RouteName
+  if (data.length === 0) {
+    try {
+      const f = encodeURIComponent(`contains(RouteName/Zh_tw,'${t}')`);
+      data = tdxArr(await apiFetch(
+        `/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`
+      ));
+    } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+  }
+
+  // Step D: OData $filter on SubRouteName (catches routes stored under sub-route name)
+  if (data.length === 0) {
+    try {
+      const f = encodeURIComponent(`SubRoutes/any(s:contains(s/SubRouteName/Zh_tw,'${t}'))`);
+      data = tdxArr(await apiFetch(
+        `/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`
+      ));
+    } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+  }
+
+  return data;
+}
+
 async function fetchRoute(tdxName) {
   const ck = `route_${tdxName}`;
   const cached = cGet(ck);
   if (cached) return cached;
 
   const t = tdxName.trim();
+  const is4digit = /^\d{4}$/.test(t);
 
-  /* ── Step 1 & 2: City buses — EXACT name match only ──
-     Never fall back to data[0]: if TDX returns routes for a
-     different number (e.g. "1510" query matches a Taipei route
-     that starts with 1510), we must reject it and try intercity. */
+  // ── 4-digit pure number → go straight to intercity ──
+  // Taipei/NewTaipei city buses never use 4-digit numbers,
+  // so we skip city API calls entirely (saves 2 API calls & avoids false matches)
+  if (is4digit) {
+    const data = await fetchIntercity(t);
+    return resolveIntercityResult(data, t, ck);
+  }
+
+  // ── City buses (1–3 digit or prefix like 綠5) — EXACT match only ──
   for (const city of ['Taipei','NewTaipei']) {
     try {
-      const data = await apiFetch(
+      const data = tdxArr(await apiFetch(
         `/v2/Bus/Route/City/${city}/${encodeURIComponent(t)}?$format=JSON`
-      );
-      if (!Array.isArray(data) || data.length === 0) continue;
-      // EXACT match only — no fallback to data[0]
+      ));
       const route = data.find(r => (r.RouteName?.Zh_tw||'').trim() === t);
       if (route) {
         const res = {route, city};
@@ -1131,50 +1202,38 @@ async function fetchRoute(tdxName) {
         return res;
       }
     } catch(e) {
-      if (e.message.includes('429') || e.message.includes('憑證')) throw e;
-      // Other errors (network etc) — continue to next city
+      if (e.message.includes('429')||e.message.includes('憑證')) throw e;
     }
   }
 
-  /* ── Step 3: Intercity 公路客運 ──
-     TDX intercity path param works: /v2/Bus/Route/Intercity/{RouteName}
-     Try path param first (faster), then $filter as fallback. */
+  // ── Intercity fallback for non-4-digit (幹線路線帶字母等) ──
   try {
-    // Attempt 3a: path parameter (exact route name)
-    let data = await apiFetch(
-      `/v2/Bus/Route/Intercity/${encodeURIComponent(t)}?$format=JSON`
-    );
-
-    // Attempt 3b: $filter if path returned nothing
-    if (!Array.isArray(data) || data.length === 0) {
-      const f = encodeURIComponent(`RouteName/Zh_tw eq '${t}'`);
-      data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`);
-    }
-
-    // Attempt 3c: contains() fuzzy search as last resort
-    if (!Array.isArray(data) || data.length === 0) {
-      const f = encodeURIComponent(`contains(RouteName/Zh_tw,'${t}')`);
-      data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`);
-    }
-
-    if (Array.isArray(data) && data.length > 0) {
-      // Prefer exact name matches; accept all if no exact
-      const exact = data.filter(r => (r.RouteName?.Zh_tw||'').trim() === t);
-      const matches = exact.length > 0 ? exact : data;
-
-      if (matches.length === 1) {
-        const res = {route: matches[0], city: 'Intercity'};
-        cSet(ck, res, ROUTE_TTL);
-        return res;
-      }
-      // Multiple operators/sub-routes → user picks
-      return {routes: matches, city: 'Intercity', multiRoute: true};
-    }
+    const data = await fetchIntercity(t);
+    return resolveIntercityResult(data, t, ck);
   } catch(e) {
-    if (e.message.includes('429') || e.message.includes('憑證')) throw e;
+    if (e.message.includes('429')||e.message.includes('憑證')) throw e;
   }
 
-  throw new Error(`找不到「${t}」路線（雙北公車及公路客運均查無此路線）`);
+  throw new Error(`找不到「${t}」路線`);
+}
+
+function resolveIntercityResult(data, t, ck) {
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`找不到「${t}」公路客運路線`);
+  }
+  // Prefer exact RouteName match
+  const exact = data.filter(r =>
+    (r.RouteName?.Zh_tw||r.SubRouteName?.Zh_tw||'').trim() === t
+  );
+  const matches = exact.length > 0 ? exact : data;
+
+  if (matches.length === 1) {
+    const res = {route: matches[0], city: 'Intercity'};
+    cSet(ck, res, ROUTE_TTL);
+    return res;
+  }
+  // Multiple → user picks operator
+  return {routes: matches, city: 'Intercity', multiRoute: true};
 }
 
 // Fetch stop list — supports both City and Intercity endpoints
@@ -1189,26 +1248,33 @@ async function fetchStops(city, tdxName, dir, routeUID) {
   try {
     if (city === 'Intercity') {
       // Step 1: path param
-      data = await apiFetch(
+      data = tdxArr(await apiFetch(
         `/v2/Bus/StopOfRoute/Intercity/${encodeURIComponent(t)}?$format=JSON`
-      );
+      ));
       // Step 2: if empty, try RouteUID filter
-      if ((!Array.isArray(data) || data.length === 0) && routeUID) {
+      if (data.length === 0 && routeUID) {
         const f = encodeURIComponent(`RouteUID eq '${routeUID}'`);
-        data = await apiFetch(`/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`);
+        data = tdxArr(await apiFetch(
+          `/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`
+        ));
+      }
+      // Step 3: SubRoute stops by SubRouteUID
+      if (data.length === 0 && routeUID) {
+        const f = encodeURIComponent(`SubRouteUID eq '${routeUID}'`);
+        data = tdxArr(await apiFetch(
+          `/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`
+        ));
       }
     } else {
-      data = await apiFetch(
+      data = tdxArr(await apiFetch(
         `/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(t)}?$format=JSON`
-      );
+      ));
     }
   } catch(e) {
     if (e.message.includes('429') || e.message.includes('憑證')) throw e;
     console.warn('fetchStops error:', e.message);
     data = [];
   }
-
-  if (!Array.isArray(data)) data = [];
 
   // Select best matching stop sequence
   let sr = null;
@@ -1288,6 +1354,7 @@ function showIntercityPicker(routes, resolved) {
   if (!grid || !panel) return;
 
   grid.innerHTML = routes.map((route, i) => {
+    const routeNm = (route.SubRouteName?.Zh_tw || route.RouteName?.Zh_tw || '').trim();
     const op  = route.OperatorName?.Zh_tw || route.OperatorID || `業者${i+1}`;
     const dep  = route.DepartureStopNameZh  || '起站';
     const dest = route.DestinationStopNameZh || '終站';
@@ -1295,7 +1362,7 @@ function showIntercityPicker(routes, resolved) {
       <div class="dir-card" onclick="selectIntercityRoute(${i})"
            style="text-align:center;padding:12px 8px">
         <div class="dc-lbl">🚌 公路客運</div>
-        <div class="dc-dest" style="font-size:0.88rem">${op}</div>
+        <div class="dc-dest" style="font-size:0.88rem">${routeNm||op}</div>
         <div class="dc-from">${dep}→${dest}</div>
       </div>`;
   }).join('');
@@ -1365,7 +1432,9 @@ async function addAndMonitor() {
   if (qBtn) { qBtn.innerHTML='<span class="sp"></span>'; qBtn.disabled=true; }
 
   try {
-    const stops=await fetchStops(city, tdxName, dir, route.RouteUID);
+    // For SubRoute-sourced intercity entries, use SubRouteUID for stop lookup
+    const uidForStops = route._fromSubRoute ? (route.SubRouteUID || route.RouteUID) : route.RouteUID;
+    const stops=await fetchStops(city, tdxName, dir, uidForStops);
     const dep=route.DepartureStopNameZh||'—';
     const dest=route.DestinationStopNameZh||'—';
     const isIntercity = city==='Intercity';
