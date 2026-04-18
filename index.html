@@ -1113,53 +1113,71 @@ async function fetchRoute(tdxName) {
 
   const t = tdxName.trim();
 
-  // 1. Try Taipei city bus
-  try {
-    const data = await apiFetch(`/v2/Bus/Route/City/Taipei/${encodeURIComponent(t)}?$format=JSON`);
-    if (Array.isArray(data) && data.length > 0) {
-      const route = data.find(r=>(r.RouteName?.Zh_tw||'').trim()===t) || data[0];
-      if (route) { const res={route,city:'Taipei'}; cSet(ck,res,ROUTE_TTL); return res; }
-    }
-  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
-
-  // 2. Try NewTaipei city bus
-  try {
-    const data = await apiFetch(`/v2/Bus/Route/City/NewTaipei/${encodeURIComponent(t)}?$format=JSON`);
-    if (Array.isArray(data) && data.length > 0) {
-      const route = data.find(r=>(r.RouteName?.Zh_tw||'').trim()===t) || data[0];
-      if (route) { const res={route,city:'NewTaipei'}; cSet(ck,res,ROUTE_TTL); return res; }
-    }
-  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
-
-  // 3. Try Intercity (公路客運)
-  // Use $filter for reliable search — path param alone may 404 on TDX
-  try {
-    const filter=encodeURIComponent(`RouteName/Zh_tw eq '${t}'`);
-    let data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${filter}&$format=JSON`);
-    // Fallback: contains search if exact match empty
-    if (!Array.isArray(data) || data.length === 0) {
-      const filterContains=encodeURIComponent(`contains(RouteName/Zh_tw,'${t}')`);
-      data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${filterContains}&$format=JSON`);
-    }
-    if (Array.isArray(data) && data.length > 0) {
-      // Filter to exact matches first, then accept partial
-      const exact = data.filter(r=>(r.RouteName?.Zh_tw||'').trim()===t);
-      const matches = exact.length > 0 ? exact : data;
-      if (matches.length === 1) {
-        const res={route:matches[0], city:'Intercity'};
-        cSet(ck,res,ROUTE_TTL);
+  /* ── Step 1 & 2: City buses — EXACT name match only ──
+     Never fall back to data[0]: if TDX returns routes for a
+     different number (e.g. "1510" query matches a Taipei route
+     that starts with 1510), we must reject it and try intercity. */
+  for (const city of ['Taipei','NewTaipei']) {
+    try {
+      const data = await apiFetch(
+        `/v2/Bus/Route/City/${city}/${encodeURIComponent(t)}?$format=JSON`
+      );
+      if (!Array.isArray(data) || data.length === 0) continue;
+      // EXACT match only — no fallback to data[0]
+      const route = data.find(r => (r.RouteName?.Zh_tw||'').trim() === t);
+      if (route) {
+        const res = {route, city};
+        cSet(ck, res, ROUTE_TTL);
         return res;
-      } else {
-        // Multiple routes/operators — let user pick
-        return {routes:matches, city:'Intercity', multiRoute:true};
       }
+    } catch(e) {
+      if (e.message.includes('429') || e.message.includes('憑證')) throw e;
+      // Other errors (network etc) — continue to next city
     }
-  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+  }
+
+  /* ── Step 3: Intercity 公路客運 ──
+     TDX intercity path param works: /v2/Bus/Route/Intercity/{RouteName}
+     Try path param first (faster), then $filter as fallback. */
+  try {
+    // Attempt 3a: path parameter (exact route name)
+    let data = await apiFetch(
+      `/v2/Bus/Route/Intercity/${encodeURIComponent(t)}?$format=JSON`
+    );
+
+    // Attempt 3b: $filter if path returned nothing
+    if (!Array.isArray(data) || data.length === 0) {
+      const f = encodeURIComponent(`RouteName/Zh_tw eq '${t}'`);
+      data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`);
+    }
+
+    // Attempt 3c: contains() fuzzy search as last resort
+    if (!Array.isArray(data) || data.length === 0) {
+      const f = encodeURIComponent(`contains(RouteName/Zh_tw,'${t}')`);
+      data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`);
+    }
+
+    if (Array.isArray(data) && data.length > 0) {
+      // Prefer exact name matches; accept all if no exact
+      const exact = data.filter(r => (r.RouteName?.Zh_tw||'').trim() === t);
+      const matches = exact.length > 0 ? exact : data;
+
+      if (matches.length === 1) {
+        const res = {route: matches[0], city: 'Intercity'};
+        cSet(ck, res, ROUTE_TTL);
+        return res;
+      }
+      // Multiple operators/sub-routes → user picks
+      return {routes: matches, city: 'Intercity', multiRoute: true};
+    }
+  } catch(e) {
+    if (e.message.includes('429') || e.message.includes('憑證')) throw e;
+  }
 
   throw new Error(`找不到「${t}」路線（雙北公車及公路客運均查無此路線）`);
 }
 
-// Fetch stop list, cache 7 days — supports Intercity endpoint
+// Fetch stop list — supports both City and Intercity endpoints
 async function fetchStops(city, tdxName, dir, routeUID) {
   const ck = `stops_${city}_${tdxName}_${dir}${routeUID?'_'+routeUID:''}`;
   const cached = cGet(ck);
@@ -1170,31 +1188,34 @@ async function fetchStops(city, tdxName, dir, routeUID) {
 
   try {
     if (city === 'Intercity') {
-      // Use path param for stops (more reliable than filter for StopOfRoute)
-      data = await apiFetch(`/v2/Bus/StopOfRoute/Intercity/${encodeURIComponent(t)}?$format=JSON`);
-      // If empty, try with RouteUID filter
-      if ((!data || data.length === 0) && routeUID) {
+      // Step 1: path param
+      data = await apiFetch(
+        `/v2/Bus/StopOfRoute/Intercity/${encodeURIComponent(t)}?$format=JSON`
+      );
+      // Step 2: if empty, try RouteUID filter
+      if ((!Array.isArray(data) || data.length === 0) && routeUID) {
         const f = encodeURIComponent(`RouteUID eq '${routeUID}'`);
         data = await apiFetch(`/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`);
       }
     } else {
-      data = await apiFetch(`/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(t)}?$format=JSON`);
+      data = await apiFetch(
+        `/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(t)}?$format=JSON`
+      );
     }
   } catch(e) {
+    if (e.message.includes('429') || e.message.includes('憑證')) throw e;
     console.warn('fetchStops error:', e.message);
     data = [];
   }
 
   if (!Array.isArray(data)) data = [];
 
-  // Find matching stop sequence: prefer routeUID match, then exact name, then direction only
-  let sr = routeUID
-    ? data.find(s => s.RouteUID === routeUID && s.Direction === dir)
-    : null;
-  if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw||'').trim() === t && s.Direction === dir);
-  if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw||'').includes(t) && s.Direction === dir);
-  if (!sr) sr = data.find(s => s.Direction === dir);
-  if (!sr) sr = data[0]; // last resort
+  // Select best matching stop sequence
+  let sr = null;
+  if (routeUID) sr = data.find(s => s.RouteUID===routeUID && s.Direction===dir);
+  if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw||'').trim()===t && s.Direction===dir);
+  if (!sr) sr = data.find(s => s.Direction===dir);
+  if (!sr && data.length > 0) sr = data[0];
 
   const stops = sr ? (sr.Stops || []) : [];
   if (stops.length > 0) cSet(ck, stops, STOP_TTL);
