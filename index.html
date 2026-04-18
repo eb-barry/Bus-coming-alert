@@ -1093,8 +1093,10 @@ async function apiFetch(path) {
   const r=await fetch(url,{headers:{Authorization:`Bearer ${tok}`}});
   if (r.status===429) throw new Error('API 呼叫過於頻繁，請稍後再試');
   if (r.status===401) { S.token=null; throw new Error('憑證過期，請重新操作'); }
+  if (r.status===404) return [];   // No data found — treat as empty array, not error
   if (!r.ok) throw new Error(`API 錯誤 ${r.status}`);
-  return r.json();
+  const json=await r.json();
+  return Array.isArray(json)?json:(json?.value||json||[]);
 }
 
 /* ══════════════════════════════════════════
@@ -1109,38 +1111,52 @@ async function fetchRoute(tdxName) {
   const cached = cGet(ck);
   if (cached) return cached;
 
-  // 1. Try city buses first (Taipei → NewTaipei)
-  for (const city of ['Taipei','NewTaipei']) {
-    try {
-      const data = await apiFetch(`/v2/Bus/Route/City/${city}/${encodeURIComponent(tdxName)}?$format=JSON`);
-      if (!Array.isArray(data) || data.length === 0) continue;
-      const t = tdxName.trim();
-      const route = data.find(r => (r.RouteName?.Zh_tw||'').trim() === t) || data[0];
-      if (route) {
-        const res = {route, city};
-        cSet(ck, res, ROUTE_TTL);
-        return res;
-      }
-    } catch(e) { if (e.message.includes('429')) throw e; }
-  }
+  const t = tdxName.trim();
 
-  // 2. Try Intercity (公路客運)
+  // 1. Try Taipei city bus
   try {
-    const data = await apiFetch(`/v2/Bus/Route/Intercity/${encodeURIComponent(tdxName)}?$format=JSON`);
+    const data = await apiFetch(`/v2/Bus/Route/City/Taipei/${encodeURIComponent(t)}?$format=JSON`);
     if (Array.isArray(data) && data.length > 0) {
-      if (data.length === 1) {
-        // Single route — use directly
-        const res = {route: data[0], city: 'Intercity'};
-        cSet(ck, res, ROUTE_TTL);
+      const route = data.find(r=>(r.RouteName?.Zh_tw||'').trim()===t) || data[0];
+      if (route) { const res={route,city:'Taipei'}; cSet(ck,res,ROUTE_TTL); return res; }
+    }
+  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+
+  // 2. Try NewTaipei city bus
+  try {
+    const data = await apiFetch(`/v2/Bus/Route/City/NewTaipei/${encodeURIComponent(t)}?$format=JSON`);
+    if (Array.isArray(data) && data.length > 0) {
+      const route = data.find(r=>(r.RouteName?.Zh_tw||'').trim()===t) || data[0];
+      if (route) { const res={route,city:'NewTaipei'}; cSet(ck,res,ROUTE_TTL); return res; }
+    }
+  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
+
+  // 3. Try Intercity (公路客運)
+  // Use $filter for reliable search — path param alone may 404 on TDX
+  try {
+    const filter=encodeURIComponent(`RouteName/Zh_tw eq '${t}'`);
+    let data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${filter}&$format=JSON`);
+    // Fallback: contains search if exact match empty
+    if (!Array.isArray(data) || data.length === 0) {
+      const filterContains=encodeURIComponent(`contains(RouteName/Zh_tw,'${t}')`);
+      data = await apiFetch(`/v2/Bus/Route/Intercity?$filter=${filterContains}&$format=JSON`);
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      // Filter to exact matches first, then accept partial
+      const exact = data.filter(r=>(r.RouteName?.Zh_tw||'').trim()===t);
+      const matches = exact.length > 0 ? exact : data;
+      if (matches.length === 1) {
+        const res={route:matches[0], city:'Intercity'};
+        cSet(ck,res,ROUTE_TTL);
         return res;
       } else {
-        // Multiple routes (different operators / sub-routes) — return all for user selection
-        return {routes: data, city: 'Intercity', multiRoute: true};
+        // Multiple routes/operators — let user pick
+        return {routes:matches, city:'Intercity', multiRoute:true};
       }
     }
-  } catch(e) { if (e.message.includes('429')) throw e; }
+  } catch(e) { if (e.message.includes('429')||e.message.includes('憑證')) throw e; }
 
-  throw new Error(`找不到「${tdxName}」路線（雙北公車及公路客運均無此路線）`);
+  throw new Error(`找不到「${t}」路線（雙北公車及公路客運均查無此路線）`);
 }
 
 // Fetch stop list, cache 7 days — supports Intercity endpoint
@@ -1149,23 +1165,38 @@ async function fetchStops(city, tdxName, dir, routeUID) {
   const cached = cGet(ck);
   if (cached) return cached;
 
-  let data;
-  if (city === 'Intercity') {
-    data = await apiFetch(`/v2/Bus/StopOfRoute/Intercity/${encodeURIComponent(tdxName)}?$format=JSON`);
-  } else {
-    data = await apiFetch(`/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(tdxName)}?$format=JSON`);
+  const t = tdxName.trim();
+  let data = [];
+
+  try {
+    if (city === 'Intercity') {
+      // Use path param for stops (more reliable than filter for StopOfRoute)
+      data = await apiFetch(`/v2/Bus/StopOfRoute/Intercity/${encodeURIComponent(t)}?$format=JSON`);
+      // If empty, try with RouteUID filter
+      if ((!data || data.length === 0) && routeUID) {
+        const f = encodeURIComponent(`RouteUID eq '${routeUID}'`);
+        data = await apiFetch(`/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`);
+      }
+    } else {
+      data = await apiFetch(`/v2/Bus/StopOfRoute/City/${city}/${encodeURIComponent(t)}?$format=JSON`);
+    }
+  } catch(e) {
+    console.warn('fetchStops error:', e.message);
+    data = [];
   }
 
-  const t = tdxName.trim();
-  let sr = data.find(s => (s.RouteName?.Zh_tw||'').trim() === t && s.Direction === dir);
-  // If routeUID provided (intercity multi-route), filter by it first
-  if (!sr && routeUID) {
-    sr = data.find(s => s.RouteUID === routeUID && s.Direction === dir);
-  }
+  if (!Array.isArray(data)) data = [];
+
+  // Find matching stop sequence: prefer routeUID match, then exact name, then direction only
+  let sr = routeUID
+    ? data.find(s => s.RouteUID === routeUID && s.Direction === dir)
+    : null;
+  if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw||'').trim() === t && s.Direction === dir);
   if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw||'').includes(t) && s.Direction === dir);
   if (!sr) sr = data.find(s => s.Direction === dir);
+  if (!sr) sr = data[0]; // last resort
 
-  const stops = sr ? sr.Stops : [];
+  const stops = sr ? (sr.Stops || []) : [];
   if (stops.length > 0) cSet(ck, stops, STOP_TTL);
   updateCacheStatus();
   return stops;
@@ -1187,6 +1218,7 @@ async function doLookup() {
   S.pendingRoute=null; S.pendingDir=null;
 
   try {
+    qBtn.title = '查詢中：雙北公車…';
     const result = await fetchRoute(resolved.tdxName);
 
     // ── Multi-route: Intercity with multiple operators ──
@@ -1203,10 +1235,8 @@ async function doLookup() {
     const dep  = route.DepartureStopNameZh  || route.DepartureStopNameEn  || '起站';
     const dest = route.DestinationStopNameZh || route.DestinationStopNameEn || '終站';
 
-    const cLabel = city==='Intercity' ? '公路客運' : city==='Taipei' ? '台北市' : '新北市';
-    if (resolved.isMapped || city==='Intercity') {
-      toast(`✅ ${cLabel}找到：${resolved.tdxName}`);
-    }
+    const cLabel = city==='Intercity' ? '🛣️ 公路客運' : city==='Taipei' ? '🚌 台北市' : '🚌 新北市';
+    toast(`✅ ${cLabel}找到：${resolved.tdxName}`);
 
     const cards=[
       {dir:0, label:'去程 ➡️', from:dep, to:dest},
