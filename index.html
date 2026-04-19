@@ -1130,7 +1130,7 @@ async function fetchIntercity(num) {
   try {
     const f = encodeURIComponent(`RouteID eq '${num}'`);
     data = tdxArr(await apiFetch(
-      `/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`
+      `/v2/Bus/Route/InterCity?$filter=${f}&$format=JSON`
     ));
   } catch(e) { rethrowFatal(e); }
 
@@ -1138,7 +1138,7 @@ async function fetchIntercity(num) {
   if (data.length === 0) {
     try {
       data = tdxArr(await apiFetch(
-        `/v2/Bus/Route/Intercity/${encodeURIComponent(num)}?$format=JSON`
+        `/v2/Bus/Route/InterCity/${encodeURIComponent(num)}?$format=JSON`
       ));
     } catch(e) { rethrowFatal(e); }
   }
@@ -1148,7 +1148,7 @@ async function fetchIntercity(num) {
     try {
       const f = encodeURIComponent(`contains(RouteName/Zh_tw,'${num}')`);
       data = tdxArr(await apiFetch(
-        `/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`
+        `/v2/Bus/Route/InterCity?$filter=${f}&$format=JSON`
       ));
     } catch(e) { rethrowFatal(e); }
   }
@@ -1158,7 +1158,7 @@ async function fetchIntercity(num) {
     try {
       const f = encodeURIComponent(`startswith(RouteID,'${num}')`);
       data = tdxArr(await apiFetch(
-        `/v2/Bus/Route/Intercity?$filter=${f}&$format=JSON`
+        `/v2/Bus/Route/InterCity?$filter=${f}&$format=JSON`
       ));
     } catch(e) { rethrowFatal(e); }
   }
@@ -1239,20 +1239,20 @@ async function fetchStops(city, tdxName, dir, routeUID) {
     if (city === 'Intercity') {
       // Step 1: path param
       data = tdxArr(await apiFetch(
-        `/v2/Bus/StopOfRoute/Intercity/${encodeURIComponent(t)}?$format=JSON`
+        `/v2/Bus/StopOfRoute/InterCity/${encodeURIComponent(t)}?$format=JSON`
       ));
       // Step 2: if empty, try RouteUID filter
       if (data.length === 0 && routeUID) {
         const f = encodeURIComponent(`RouteUID eq '${routeUID}'`);
         data = tdxArr(await apiFetch(
-          `/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`
+          `/v2/Bus/StopOfRoute/InterCity?$filter=${f}&$format=JSON`
         ));
       }
       // Step 3: SubRoute stops by SubRouteUID
       if (data.length === 0 && routeUID) {
         const f = encodeURIComponent(`SubRouteUID eq '${routeUID}'`);
         data = tdxArr(await apiFetch(
-          `/v2/Bus/StopOfRoute/Intercity?$filter=${f}&$format=JSON`
+          `/v2/Bus/StopOfRoute/InterCity?$filter=${f}&$format=JSON`
         ));
       }
     } else {
@@ -1345,7 +1345,7 @@ function showIntercityPicker(routes, resolved) {
 
   grid.innerHTML = routes.map((route, i) => {
     const rname = (route.RouteName?.Zh_tw || route.RouteID || '').trim();
-    const op    = route.OperatorName?.Zh_tw || route.OperatorID || `業者${i+1}`;
+    const op    = route.Operators?.[0]?.OperatorName?.Zh_tw || route.OperatorName?.Zh_tw || route.OperatorID || `業者${i+1}`;
     const dep   = route.DepartureStopNameZh  || '起站';
     const dest  = route.DestinationStopNameZh || '終站';
     return `
@@ -1375,7 +1375,7 @@ function selectIntercityRoute(idx) {
 
   const dep  = route.DepartureStopNameZh  || '起站';
   const dest = route.DestinationStopNameZh || '終站';
-  const op   = route.OperatorName?.Zh_tw  || '';
+  const op   = route.Operators?.[0]?.OperatorName?.Zh_tw || route.OperatorName?.Zh_tw || '';
 
   document.getElementById('intercityPicker').style.display='none';
 
@@ -1428,7 +1428,7 @@ async function addAndMonitor() {
     const dep=route.DepartureStopNameZh||'—';
     const dest=route.DestinationStopNameZh||'—';
     const isIntercity = city==='Intercity';
-    const operatorName = isIntercity ? (route.OperatorName?.Zh_tw||'') : '';
+    const operatorName = isIntercity ? (route.Operators?.[0]?.OperatorName?.Zh_tw || route.OperatorName?.Zh_tw || '') : '';
 
     // For intercity: use RouteName.Zh_tw as the tdxName for RT/Stop API path params
     const rtName = isIntercity ? (route.RouteName?.Zh_tw || tdxName) : tdxName;
@@ -1769,7 +1769,7 @@ async function fetchAll() {
       markCall();
       // Use Intercity endpoint if this is a 公路客運 route
       const rtPath = bus.isIntercity
-        ? `/v2/Bus/RealTimeNearStop/Intercity/${encodeURIComponent(bus.tdxName)}?$format=JSON`
+        ? `/v2/Bus/RealTimeNearStop/InterCity/${encodeURIComponent(bus.tdxName)}?$format=JSON`
         : `/v2/Bus/RealTimeNearStop/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`;
       const rt = await apiFetch(rtPath);
       let eta = null;
