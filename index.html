@@ -1076,9 +1076,12 @@ async function getToken() {
   if (S.token && Date.now()<S.tokenExp-60000) return S.token;
   const id=ls('tdx_id'), sc=ls('tdx_sec');
   if (!id||!sc) { openSettings(); throw new Error('請先設定 TDX API 金鑰'); }
+  // Use plain string body — URLSearchParams causes postMessage clone error in some iOS WebViews
+  const body=`grant_type=client_credentials&client_id=${encodeURIComponent(id)}&client_secret=${encodeURIComponent(sc)}`;
   const r=await fetch(TDX_TOKEN,{
-    method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:new URLSearchParams({grant_type:'client_credentials',client_id:id,client_secret:sc})
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:body
   });
   if (!r.ok) throw new Error('TDX 認證失敗，請確認 API 金鑰');
   const d=await r.json();
