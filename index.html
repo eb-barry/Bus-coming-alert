@@ -1205,13 +1205,20 @@ async function fetchRoute(tdxName) {
     return resolveIntercityResult(data, t, ck);
   }
 
-  // ── City buses (EXACT RouteName match only) ──
+  // ── City buses (EXACT RouteName match, with fallback for named routes) ──
+  // Pure-number routes: exact match only (prevents false intercity matches)
+  // Named routes (幹線, 綠5, etc.): allow data[0] fallback since TDX
+  //   may return slight variations but the first result is always correct
+  const isPureNumber = /^\d+$/.test(t);
   for (const city of ['Taipei', 'NewTaipei']) {
     try {
       const data = tdxArr(await apiFetch(
         `/v2/Bus/Route/City/${city}/${encodeURIComponent(t)}?$format=JSON`
       ));
-      const route = data.find(r => (r.RouteName?.Zh_tw||'').trim() === t);
+      if (!data.length) continue;
+      // For named routes (幹線 etc.): accept first result if no exact match
+      const route = data.find(r => (r.RouteName?.Zh_tw||'').trim() === t)
+                 || (isPureNumber ? null : data[0]);
       if (route) {
         const res = { route, city };
         cSet(ck, res, ROUTE_TTL);
