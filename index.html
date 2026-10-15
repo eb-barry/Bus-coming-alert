@@ -133,6 +133,23 @@ body{
 .dc-dest{font-size:1rem;font-weight:800;color:var(--PD);line-height:1.3;}
 .dir-card.sel .dc-dest{color:var(--P);}
 .dc-from{font-size:0.75rem;color:var(--TX2);margin-top:3px;}
+.dir-card .cmp-add{
+  margin-top:8px;width:100%;padding:8px 6px;font-size:0.78rem;
+}
+.cmp-card{
+  border:2px solid var(--BD);border-radius:var(--Rs);
+  padding:12px;margin-top:8px;background:#fff;
+}
+.cmp-card.closest{border-color:var(--SUC);background:var(--SUC-BG);}
+.cmp-badge{
+  display:inline-block;background:var(--SUC);color:#fff;
+  font-size:0.75rem;font-weight:800;border-radius:99px;
+  padding:2px 8px;margin-bottom:6px;
+}
+.cmp-name{font-size:1.05rem;font-weight:800;color:var(--PD);}
+.cmp-detail{font-size:0.85rem;color:var(--TX2);margin-top:4px;line-height:1.5;}
+.cmp-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+.cmp-note{font-size:0.75rem;color:var(--TX2);margin-top:6px;line-height:1.5;}
 
 /* Confirm card */
 .cc{background:var(--INF-BG);border:1.5px solid var(--INF-BD);border-radius:var(--Rs);padding:11px 14px;margin-bottom:10px;}
@@ -459,8 +476,16 @@ input:focus,select:focus{border-color:var(--P);}
 
     <!-- Direction selection -->
     <div id="dirSection" style="display:none;margin-top:10px;">
-      <label>選擇行駛方向（請點選）</label>
+      <label>選擇行駛方向（點卡片立即監控這一條）</label>
       <div class="dir-grid" id="dirGrid"></div>
+    </div>
+
+    <!-- Compare up to 4 routes in one pair of API calls, then pick one -->
+    <div id="compareSec" style="display:none;margin-top:12px;">
+      <label>比較路線（最多 4 條）</label>
+      <div class="cmp-note">同一市區的路線會併在一起查：站牌 1 次、即時位置 1 次。查完後可監控離您最近的一條，或自行點選。</div>
+      <button class="btn btn-P" id="compareQueryBtn" onclick="queryCompare()" style="margin-top:10px">一次查詢位置與站牌</button>
+      <div id="compareList"></div>
     </div>
 
     <!-- Confirm card -->
@@ -678,9 +703,11 @@ input:focus,select:focus{border-color:var(--P);}
 
       <div style="font-size:0.8rem;color:var(--TX2);line-height:1.8">
         <strong>API 呼叫頻率</strong><br>
+        • 同一市區多條路線合併成 1 次即時位置呼叫<br>
         • 無公車在範圍內：每 60 秒更新<br>
         • 公車進入提醒範圍：每 30 秒更新<br>
-        • 公車距離 2 站內：每 15 秒更新
+        • 公車距離 2 站內：每 15 秒更新（同一市區）<br>
+        • 同時監控兩個縣市時，更新會自動放慢，維持每分鐘最多 4 次
       </div>
     </div>
   </div>
@@ -744,10 +771,12 @@ const ROUTE_TTL = 24 * 3600 * 1000;
 // Platform detection
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
-// Dynamic refresh intervals (ms) — tuned for TDX 5 calls/min limit
-const INTERVAL_FAR   = 60000;  // > alertStops: 60s (safe for any number of routes)
+// Dynamic refresh intervals (ms) — tuned for TDX 5 calls/min limit.
+// Same-city routes share one RealTimeNearStop call, so 15s stays within
+// 4 calls/min for a single city. Extra cities widen the interval.
+const INTERVAL_FAR   = 60000;  // > alertStops: 60s
 const INTERVAL_NEAR  = 30000;  // within alertStops: 30s
-const INTERVAL_CLOSE = 15000;  // ≤ 2 stops: 15s
+const INTERVAL_CLOSE = 15000;  // ≤ 2 stops: 15s, one city group
 
 // API rate limiter: max 4 calls/min (leave 1 buffer)
 const API_RATE = { calls:[], MAX:4, WINDOW:60000 };
@@ -773,6 +802,9 @@ const S = {
   wakeLock:null,
   swReg:null,  // ServiceWorkerRegistration — stored on init
   pendingRoute:null, pendingDir:null,
+  compare:[],      // up to 4 routes waiting for a batched position/stop query
+  compareRows:null,
+  freshRt:null,    // last batched realtime payload, reused for a few seconds
   kbuf:'',
   // Boarding detection: key -> {arrivedLat, arrivedLng, timerId}
   boardingCheck:{},
@@ -1233,9 +1265,58 @@ async function fetchRoute(tdxName) {
 }
 
 
+function odataQuote(s) {
+  return String(s ?? '').replace(/'/g, "''");
+}
+function busGroupKey(bus) {
+  return (bus.isIntercity || bus.city === 'Intercity') ? 'Intercity' : bus.city;
+}
+function busIdentity(bus) {
+  return `${bus.city}|${bus.routeId || ''}|${bus.tdxName}|${bus.dir}`;
+}
+function busesODataFilter(buses) {
+  const seen = new Set();
+  const parts = [];
+  for (const bus of buses) {
+    const expr = (bus.isIntercity || bus.city === 'Intercity') && bus.routeId
+      ? `RouteUID eq '${odataQuote(bus.routeId)}'`
+      : `RouteName/Zh_tw eq '${odataQuote(bus.tdxName)}'`;
+    if (seen.has(expr)) continue;
+    seen.add(expr);
+    parts.push(`(${expr})`);
+  }
+  return parts.join(' or ');
+}
+function realtimePathFor(key, buses) {
+  const filter = encodeURIComponent(busesODataFilter(buses));
+  if (key === 'Intercity') {
+    return `/v2/Bus/RealTimeNearStop/InterCity?$filter=${filter}&$format=JSON`;
+  }
+  return `/v2/Bus/RealTimeNearStop/City/${key}?$filter=${filter}&$format=JSON`;
+}
+function routeRowMatches(row, bus) {
+  if ((bus.isIntercity || bus.city === 'Intercity') && bus.routeId && row.RouteUID) {
+    return row.RouteUID === bus.routeId;
+  }
+  return (row.RouteName?.Zh_tw || '').trim() === (bus.tdxName || '').trim();
+}
+function pickStops(data, tdxName, dir, routeUID, allowFallback) {
+  const t = (tdxName || '').trim();
+  let sr = null;
+  if (routeUID) sr = data.find(s => s.RouteUID === routeUID && s.Direction === dir);
+  if (!sr && routeUID) sr = data.find(s => s.SubRouteUID === routeUID && s.Direction === dir);
+  if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw || '').trim() === t && s.Direction === dir);
+  if (!sr) sr = data.find(s => s.Direction === dir);
+  if (!sr && allowFallback && data.length > 0) sr = data[0];
+  return sr ? (sr.Stops || []) : [];
+}
+function stopCacheKey(city, tdxName, dir, routeUID) {
+  return `stops_${city}_${tdxName}_${dir}${routeUID ? '_' + routeUID : ''}`;
+}
+
 // Fetch stop list — supports both City and Intercity endpoints
 async function fetchStops(city, tdxName, dir, routeUID) {
-  const ck = `stops_${city}_${tdxName}_${dir}${routeUID?'_'+routeUID:''}`;
+  const ck = stopCacheKey(city, tdxName, dir, routeUID);
   const cached = cGet(ck);
   if (cached) return cached;
 
@@ -1273,14 +1354,7 @@ async function fetchStops(city, tdxName, dir, routeUID) {
     data = [];
   }
 
-  // Select best matching stop sequence
-  let sr = null;
-  if (routeUID) sr = data.find(s => s.RouteUID===routeUID && s.Direction===dir);
-  if (!sr) sr = data.find(s => (s.RouteName?.Zh_tw||'').trim()===t && s.Direction===dir);
-  if (!sr) sr = data.find(s => s.Direction===dir);
-  if (!sr && data.length > 0) sr = data[0];
-
-  const stops = sr ? (sr.Stops || []) : [];
+  const stops = pickStops(data, t, dir, routeUID, true);
   if (stops.length > 0) cSet(ck, stops, STOP_TTL);
   updateCacheStatus();
   return stops;
@@ -1327,10 +1401,13 @@ async function doLookup() {
       {dir:1, label:'返程 ⬅️', from:dest, to:dep},
     ];
     document.getElementById('dirGrid').innerHTML=cards.map(c=>`
-      <div class="dir-card" id="dc_${c.dir}" onclick="selDir(${c.dir},'${esc(c.from)}','${esc(c.to)}')">
-        <div class="dc-lbl">${c.label}</div>
-        <div class="dc-dest">往 ${c.to}</div>
-        <div class="dc-from">從 ${c.from} 出發</div>
+      <div class="dir-card" id="dc_${c.dir}">
+        <div onclick="selDir(${c.dir},'${esc(c.from)}','${esc(c.to)}')">
+          <div class="dc-lbl">${c.label}</div>
+          <div class="dc-dest">往 ${c.to}</div>
+          <div class="dc-from">從 ${c.from} 出發</div>
+        </div>
+        <button type="button" class="btn-sm cmp-add" onclick="addToCompare(${c.dir})">＋ 加入比較</button>
       </div>`).join('');
     document.getElementById('dirSection').style.display='block';
     document.getElementById('confirmCard').style.display='none';
@@ -1391,10 +1468,13 @@ function selectIntercityRoute(idx) {
     {dir:1, label:`返程 ⬅️${op?` (${op})`:''}`, from:dest, to:dep},
   ];
   document.getElementById('dirGrid').innerHTML=cards.map(c=>`
-    <div class="dir-card" id="dc_${c.dir}" onclick="selDir(${c.dir},'${esc(c.from)}','${esc(c.to)}')">
-      <div class="dc-lbl">${c.label}</div>
-      <div class="dc-dest">往 ${c.to}</div>
-      <div class="dc-from">從 ${c.from} 出發</div>
+    <div class="dir-card" id="dc_${c.dir}">
+      <div onclick="selDir(${c.dir},'${esc(c.from)}','${esc(c.to)}')">
+        <div class="dc-lbl">${c.label}</div>
+        <div class="dc-dest">往 ${c.to}</div>
+        <div class="dc-from">從 ${c.from} 出發</div>
+      </div>
+      <button type="button" class="btn-sm cmp-add" onclick="addToCompare(${c.dir})">＋ 加入比較</button>
     </div>`).join('');
   document.getElementById('dirSection').style.display='block';
   toast(`✅ 已選擇：${op || resolved.tdxName}`);
@@ -1473,6 +1553,256 @@ async function addAndMonitor() {
 }
 
 function esc(s){ return (s||'').replace(/'/g,"&#39;"); }
+function escHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+function entryFromPending(dir) {
+  const {route, city, resolved} = S.pendingRoute;
+  const tdxName = resolved.tdxName;
+  const isIntercity = city === 'Intercity';
+  const rtName = isIntercity ? (route.RouteName?.Zh_tw || tdxName) : tdxName;
+  const dep = route.DepartureStopNameZh || '—';
+  const dest = route.DestinationStopNameZh || '—';
+  return {
+    userLabel: S.kbuf,
+    tdxName: rtName,
+    displayName: tdxName,
+    isMapped: resolved.isMapped || isIntercity,
+    isIntercity,
+    operatorName: isIntercity ? (route.Operators?.[0]?.OperatorName?.Zh_tw || route.OperatorName?.Zh_tw || '') : '',
+    dir,
+    city,
+    routeId: route.RouteUID,
+    startStop: dir === 0 ? dep : dest,
+    endStop: dir === 0 ? dest : dep,
+    stops: null,
+    nearSeq: null,
+    _stopUid: route._fromSubRoute ? (route.SubRouteUID || route.RouteUID) : route.RouteUID,
+  };
+}
+
+function addToCompare(dir) {
+  if (!S.kbuf || !S.pendingRoute) { toast('請先查詢路線'); return; }
+  const entry = entryFromPending(dir);
+  if (S.compare.some(b => b.tdxName === entry.tdxName && b.dir === entry.dir && b.city === entry.city)) {
+    toast('這條已經在比較清單');
+    return;
+  }
+  if (S.compare.length >= 4) { toast('比較清單最多 4 條'); return; }
+  S.compare.push(entry);
+  S.compareRows = null;
+  renderCompare();
+  if (S.compare.length === 4) toast('已放滿 4 條，請按一次查詢');
+}
+
+function removeCompare(i) {
+  S.compare.splice(i, 1);
+  if (S.compareRows) S.compareRows.splice(i, 1);
+  if (S.compareRows) {
+    S.compareRows.forEach(r => { r.closest = false; });
+    const best = pickClosest(S.compareRows);
+    if (best) best.closest = true;
+  }
+  renderCompare();
+}
+
+async function ensureStopsForBuses(buses) {
+  const pending = [];
+  for (const bus of buses) {
+    const uid = bus._stopUid || '';
+    const cached = cGet(stopCacheKey(bus.city, bus.tdxName, bus.dir, uid));
+    if (cached) { bus.stops = cached; continue; }
+    pending.push(bus);
+  }
+  const groups = new Map();
+  for (const bus of pending) {
+    const k = busGroupKey(bus);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(bus);
+  }
+  for (const [key, list] of groups) {
+    if (list.length === 1) {
+      const b = list[0];
+      b.stops = await fetchStops(b.city, b.tdxName, b.dir, b._stopUid || b.routeId);
+      continue;
+    }
+    if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
+    markCall();
+    const filter = encodeURIComponent(busesODataFilter(list));
+    const path = key === 'Intercity'
+      ? `/v2/Bus/StopOfRoute/InterCity?$filter=${filter}&$format=JSON`
+      : `/v2/Bus/StopOfRoute/City/${key}?$filter=${filter}&$format=JSON`;
+    const data = tdxArr(await apiFetch(path));
+    for (const bus of list) {
+      let stops = pickStops(data, bus.tdxName, bus.dir, bus.routeId, false);
+      if (!stops.length) stops = await fetchStops(bus.city, bus.tdxName, bus.dir, bus._stopUid || bus.routeId);
+      bus.stops = stops;
+      if (stops.length) cSet(stopCacheKey(bus.city, bus.tdxName, bus.dir, bus._stopUid || ''), stops, STOP_TTL);
+    }
+    updateCacheStatus();
+  }
+}
+
+function scoreBus(bus, rows) {
+  if (S.lat) calcNearest(bus);
+  const userSeq = bus.nearSeq;
+  let meters = null;
+  let userStop = null;
+  if (userSeq && bus.stops?.length) {
+    userStop = stopName(bus, userSeq);
+    const s = bus.stops.find(x => x.StopSequence === userSeq);
+    const la = s?.StopPosition?.PositionLat, lo = s?.StopPosition?.PositionLon;
+    if (la != null && lo != null && S.lat != null) meters = Math.round(haversine(S.lat, S.lng, la, lo));
+  }
+  let away = null, curStop = null;
+  if (userSeq && rows) {
+    const onRoute = rows.filter(r => routeRowMatches(r, bus) && r.Direction === bus.dir && r.BusStatus <= 2);
+    let minD = Infinity, closest = null;
+    for (const b of onRoute) {
+      const diff = userSeq - b.StopSequence;
+      if (diff >= 0 && diff < minD) { minD = diff; closest = b; }
+    }
+    if (closest) { away = minD; curStop = stopName(bus, closest.StopSequence); }
+  }
+  return { bus, meters, away, curStop, userStop, closest: false };
+}
+
+function pickClosest(scored) {
+  const ranked = scored.filter(s => s.meters != null);
+  ranked.sort((a, b) => a.meters - b.meters || ((a.away ?? 999) - (b.away ?? 999)));
+  return ranked[0] || null;
+}
+
+let _compareBusy = false;
+async function queryCompare() {
+  if (_compareBusy) return;
+  if (!S.compare.length) { toast('請先把路線加入比較'); return; }
+  const btn = document.getElementById('compareQueryBtn');
+  _compareBusy = true;
+  if (btn) { btn.disabled = true; btn.textContent = '查詢中…'; }
+  try {
+    await ensureStopsForBuses(S.compare);
+    const groups = new Map();
+    for (const bus of S.compare) {
+      const k = busGroupKey(bus);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(bus);
+    }
+    const byKey = {};
+    for (const [key, list] of groups) {
+      if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
+      markCall();
+      const rows = tdxArr(await apiFetch(realtimePathFor(key, list)));
+      byKey[key] = { rows, ids: new Set(list.map(busIdentity)) };
+    }
+    S.freshRt = { at: Date.now(), byKey };
+    const scored = S.compare.map(bus => scoreBus(bus, byKey[busGroupKey(bus)].rows));
+    const best = pickClosest(scored);
+    if (best) best.closest = true;
+    S.compareRows = scored;
+    renderCompare();
+    if (!S.lat) toast('尚未取得 GPS，請自行點選要監控的路線');
+    else if (best) {
+      const nm = best.bus.isMapped ? best.bus.tdxName : best.bus.userLabel;
+      toast(`離您最近的是 ${nm}`);
+    } else toast('已取得各線位置，請點選要監控的路線');
+  } catch (e) {
+    toast('❌ ' + e.message);
+  } finally {
+    _compareBusy = false;
+    if (btn) { btn.disabled = false; }
+    renderCompare();
+  }
+}
+
+function renderCompare() {
+  const sec = document.getElementById('compareSec');
+  const list = document.getElementById('compareList');
+  const btn = document.getElementById('compareQueryBtn');
+  if (!sec || !list) return;
+  if (!S.compare.length) {
+    sec.style.display = 'none';
+    S.compareRows = null;
+    return;
+  }
+  sec.style.display = 'block';
+  if (btn && !_compareBusy) btn.textContent = `一次查詢這 ${S.compare.length} 條的位置與站牌`;
+  const rows = S.compareRows;
+  const cards = S.compare.map((b, i) => {
+    const scored = rows ? rows[i] : null;
+    const nm = b.isMapped ? b.tdxName : b.userLabel;
+    const dl = b.dir === 0 ? '去程' : '返程';
+    const city = b.city === 'Taipei' ? '台北市' : b.city === 'NewTaipei' ? '新北市' : '公路客運';
+    let detail = `${city} · 往 ${escHtml(b.endStop)}`;
+    if (scored) {
+      const stopLine = scored.userStop
+        ? `最近站牌：${escHtml(scored.userStop)}${scored.meters != null ? `（距您 ${scored.meters} 公尺）` : ''}`
+        : '最近站牌：取得定位後才能計算';
+      const busLine = scored.away == null
+        ? '目前沒有接近您這站的車輛'
+        : scored.away === 0
+          ? `公車已到 ${escHtml(scored.userStop || '您的站牌')}`
+          : `公車在 ${escHtml(scored.curStop)}，還有 ${scored.away} 站`;
+      detail = `${stopLine}<br>${busLine}`;
+    }
+    const badge = scored?.closest ? '<div class="cmp-badge">離您最近</div>' : '';
+    const monitorLabel = scored?.closest ? '監控最近的這條' : '監控這條';
+    return `
+      <div class="cmp-card ${scored?.closest ? 'closest' : ''}">
+        ${badge}
+        <div class="cmp-name">${escHtml(nm)}（${dl}）</div>
+        <div class="cmp-detail">${detail}</div>
+        <div class="cmp-actions">
+          <button type="button" class="btn-sm" onclick="monitorCompare(${i})">${monitorLabel}</button>
+          <button type="button" class="btn-sm" style="border-color:var(--ERR);color:var(--ERR)" onclick="removeCompare(${i})">移除</button>
+        </div>
+      </div>`;
+  }).join('');
+  const closestBtn = rows && rows.some(r => r.closest)
+    ? '<button type="button" class="btn btn-P" style="margin-top:8px" onclick="monitorClosest()">監控離我最近的一條</button>'
+    : '';
+  list.innerHTML = closestBtn + cards;
+}
+
+async function monitorOnly(entry) {
+  if (!entry) return;
+  if (!entry.stops?.length) {
+    try {
+      entry.stops = await fetchStops(entry.city, entry.tdxName, entry.dir, entry._stopUid || entry.routeId);
+    } catch (e) {
+      toast('❌ ' + e.message);
+      return;
+    }
+  }
+  if (!entry.stops?.length) { toast('找不到這條路線的站牌'); return; }
+  for (const b of [...S.buses]) cancelBoardingCheck(b.tdxName + '_' + b.dir);
+  S.arrived.clear();
+  S.lastAlert = {};
+  if (S.lat) calcNearest(entry);
+  S.buses = [{ ...entry, stops: entry.stops, nearSeq: entry.nearSeq, _removeScheduled: false }];
+  renderMonitor();
+  updateSaveBtn();
+  const nm = entry.isMapped ? entry.tdxName : entry.userLabel;
+  const dl = entry.dir === 0 ? '去程' : '返程';
+  toast(`開始監控 ${nm}（${dl}）`);
+  if (!S.monitoring) startMonitor();
+  else fetchAll();
+}
+
+function monitorCompare(i) {
+  const row = S.compareRows ? S.compareRows[i] : null;
+  const entry = row ? row.bus : S.compare[i];
+  monitorOnly(entry);
+}
+
+function monitorClosest() {
+  const best = (S.compareRows || []).find(r => r.closest);
+  if (!best) { toast('請先查詢，或自行點選一條'); return; }
+  monitorOnly(best.bus);
+}
 
 /* ══════════════════════════════════════════
    QUEUE BUS (adds to queue, no monitoring yet)
@@ -1578,7 +1908,8 @@ function removeActiveBus(i) {
 
 function clearAll() {
   S.busQueue=[]; S.buses=[]; S.arrived.clear(); S.lastAlert={};
-  stopMonitor(); renderMonitor(); renderQueue(); updateSaveBtn(); toast('已清除全部路線');
+  S.compare=[]; S.compareRows=null; S.freshRt=null;
+  stopMonitor(); renderMonitor(); renderQueue(); renderCompare(); updateSaveBtn(); toast('已清除全部路線');
 }
 
 /* ══════════════════════════════════════════
@@ -1747,8 +2078,9 @@ function updateCountdown() {
   if (!S.monitoring) return;
   if (lbl) lbl.textContent=`🔄 ${S.countdown}s`;
   if (txt) {
-    const rate=S.currentInterval===INTERVAL_CLOSE?'15s/次':
-               S.currentInterval===INTERVAL_NEAR?'30s/次':'60s/次';
+    const rate = S.currentInterval<=INTERVAL_CLOSE ? '15s/次'
+      : S.currentInterval<=INTERVAL_NEAR ? '30s/次'
+      : `${Math.round(S.currentInterval/1000)}s/次`;
     txt.textContent=rate;
     txt.style.display='inline';
   }
@@ -1756,94 +2088,124 @@ function updateCountdown() {
 
 /* ══════════════════════════════════════════
    FETCH BUS REAL-TIME DATA
+   One RealTimeNearStop call per city (or InterCity), covering every
+   monitored route in that group via $filter.
 ══════════════════════════════════════════ */
-async function fetchAll() {
-  if (!S.monitoring||!S.buses.length) return;
-  const alertStops=parseInt(document.getElementById('alertStops').value);
-  const results=[];
-  let minStopsAway=Infinity;
+function takeFreshRt(key, buses) {
+  const fresh = S.freshRt;
+  if (!fresh || Date.now() - fresh.at > 20000) return null;
+  const pack = fresh.byKey[key];
+  if (!pack) return null;
+  for (const bus of buses) {
+    if (!pack.ids.has(busIdentity(bus))) return null;
+  }
+  return pack.rows;
+}
 
-  for (const bus of S.buses) {
-    const key=bus.tdxName+'_'+bus.dir;
-    if (S.arrived.has(key)) { results.push({bus,status:'arrived'}); continue; }
-    try {
-      // Rate limit guard — skip if too many calls recently
-      if (!canCall()) {
-        results.push({bus,status:'ratelimit'});
-        continue;
-      }
-      // Single API call: RealTimeNearStop only (saves 1 call vs parallel ETA+RT)
-      markCall();
-      // Use Intercity endpoint if this is a 公路客運 route
-      const rtPath = bus.isIntercity
-        ? `/v2/Bus/RealTimeNearStop/InterCity/${encodeURIComponent(bus.tdxName)}?$format=JSON`
-        : `/v2/Bus/RealTimeNearStop/City/${bus.city}/${encodeURIComponent(bus.tdxName)}?$format=JSON`;
-      const rt = await apiFetch(rtPath);
-      let eta = null;
+function absorbRealtime(bus, rt, alertStops, results, tracker) {
+  const key = bus.tdxName + '_' + bus.dir;
+  if (!bus.nearSeq && S.lat) calcNearest(bus);
+  const userSeq = bus.nearSeq;
+  if (!userSeq) { results.push({bus, status:'locating'}); return; }
 
-      if (!bus.nearSeq&&S.lat) calcNearest(bus);
-      const userSeq=bus.nearSeq;
-      if (!userSeq) { results.push({bus,status:'locating'}); continue; }
+  const onRoute = rt.filter(r => routeRowMatches(r, bus) && r.Direction === bus.dir && r.BusStatus <= 2);
+  let closest = null, minD = Infinity;
+  for (const b of onRoute) {
+    const diff = userSeq - b.StopSequence;
+    if (diff >= 0 && diff < minD) { minD = diff; closest = b; }
+  }
 
-      // Find approaching bus closest to user stop
-      const onRoute=rt.filter(r=>r.Direction===bus.dir&&r.BusStatus<=2);
-      let closest=null, minD=Infinity;
-      for (const b of onRoute) {
-        const diff=userSeq-b.StopSequence;
-        if (diff>=0&&diff<minD) { minD=diff; closest=b; }
-      }
-
-      // Check if bus has passed user's stop (StopSequence now > nearSeq)
-      if (!closest && !S.arrived.has(key)) {
-        const busAhead = onRoute.find(b => b.StopSequence > userSeq);
-        if (busAhead && S.lastAlert[key]?.away === 0 && !S.boardingCheck[key]) {
-          // Bus was at user stop last cycle and is now ahead — trigger boarding check
-          startBoardingCheck(bus, key, userSeq);
-        }
-      }
-
-      if (closest) {
-        const away=minD, curSeq=closest.StopSequence;
-        const curStop=stopName(bus,curSeq);
-        const prev=S.lastAlert[key];
-        const isNew=!prev||prev.lastSeq!==curSeq;
-
-        // Track for dynamic interval
-        if (away<minStopsAway) minStopsAway=away;
-
-        if (away===0) {
-          if (!S.arrived.has(key)) {
-            S.arrived.add(key);
-            S.lastAlert[key]={away:0,lastSeq:curSeq};
-            if (isNew) announceArrived(bus,stopName(bus,userSeq));
-            // Start 30-second boarding detection window
-            startBoardingCheck(bus,key,userSeq);
-          }
-          results.push({bus,away:0,curStop,status:'arrived'});
-        } else if (away<=alertStops) {
-          S.lastAlert[key]={away,lastSeq:curSeq};
-          if (isNew) announceApproach(bus,away,curStop);
-          results.push({bus,away,curStop,status:away<=2?'close':'near'});
-        } else {
-          S.lastAlert[key]={away,lastSeq:curSeq};
-          results.push({bus,away,curStop,status:'normal'});
-        }
-      } else {
-        results.push({bus,mins:null,status:'waiting'});
-      }
-    } catch(e) {
-      results.push({bus,err:e.message,status:'error'});
+  if (!closest && !S.arrived.has(key)) {
+    const busAhead = onRoute.find(b => b.StopSequence > userSeq);
+    if (busAhead && S.lastAlert[key]?.away === 0 && !S.boardingCheck[key]) {
+      startBoardingCheck(bus, key, userSeq);
     }
   }
 
-  // Set dynamic interval based on closest bus
-  const prev=S.currentInterval;
-  const alertStopsN=parseInt(document.getElementById('alertStops').value);
-  if (minStopsAway<=2) S.currentInterval=INTERVAL_CLOSE;
-  else if (minStopsAway<=alertStopsN) S.currentInterval=INTERVAL_NEAR;
-  else S.currentInterval=INTERVAL_FAR;
-  // If interval changed, reschedule
-  if (prev!==S.currentInterval) scheduleNext();
+  if (closest) {
+    const away = minD, curSeq = closest.StopSequence;
+    const curStop = stopName(bus, curSeq);
+    const prev = S.lastAlert[key];
+    const isNew = !prev || prev.lastSeq !== curSeq;
+    if (away < tracker.minStopsAway) tracker.minStopsAway = away;
+
+    if (away === 0) {
+      if (!S.arrived.has(key)) {
+        S.arrived.add(key);
+        S.lastAlert[key] = {away:0, lastSeq:curSeq};
+        if (isNew) announceArrived(bus, stopName(bus, userSeq));
+        startBoardingCheck(bus, key, userSeq);
+      }
+      results.push({bus, away:0, curStop, status:'arrived'});
+    } else if (away <= alertStops) {
+      S.lastAlert[key] = {away, lastSeq:curSeq};
+      if (isNew) announceApproach(bus, away, curStop);
+      results.push({bus, away, curStop, status:away <= 2 ? 'close' : 'near'});
+    } else {
+      S.lastAlert[key] = {away, lastSeq:curSeq};
+      results.push({bus, away, curStop, status:'normal'});
+    }
+  } else {
+    results.push({bus, mins:null, status:'waiting'});
+  }
+}
+
+async function fetchAll() {
+  if (!S.monitoring || !S.buses.length) return;
+  const alertStops = parseInt(document.getElementById('alertStops').value);
+  const results = [];
+  const tracker = { minStopsAway: Infinity };
+  const active = [];
+
+  for (const bus of S.buses) {
+    const key = bus.tdxName + '_' + bus.dir;
+    if (S.arrived.has(key)) { results.push({bus, status:'arrived'}); continue; }
+    active.push(bus);
+  }
+
+  const groups = new Map();
+  for (const bus of active) {
+    const k = busGroupKey(bus);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(bus);
+  }
+
+  const rtByBus = new Map();
+  for (const [key, list] of groups) {
+    const fresh = takeFreshRt(key, list);
+    if (fresh) {
+      for (const bus of list) rtByBus.set(bus, {ok:true, rows:fresh});
+      continue;
+    }
+    if (!canCall()) {
+      for (const bus of list) rtByBus.set(bus, {ok:false, ratelimit:true});
+      continue;
+    }
+    try {
+      markCall();
+      const rows = tdxArr(await apiFetch(realtimePathFor(key, list)));
+      for (const bus of list) rtByBus.set(bus, {ok:true, rows});
+    } catch (e) {
+      for (const bus of list) rtByBus.set(bus, {ok:false, err:e.message});
+    }
+  }
+
+  for (const bus of active) {
+    const pack = rtByBus.get(bus);
+    if (!pack || pack.ratelimit) { results.push({bus, status:'ratelimit'}); continue; }
+    if (!pack.ok) { results.push({bus, err:pack.err, status:'error'}); continue; }
+    try { absorbRealtime(bus, pack.rows, alertStops, results, tracker); }
+    catch (e) { results.push({bus, err:e.message, status:'error'}); }
+  }
+
+  const prev = S.currentInterval;
+  const away = tracker.minStopsAway;
+  let desired = INTERVAL_FAR;
+  if (away <= 2) desired = INTERVAL_CLOSE;
+  else if (away <= alertStops) desired = INTERVAL_NEAR;
+  const groupCount = Math.max(1, groups.size);
+  S.currentInterval = Math.max(desired, groupCount * INTERVAL_CLOSE);
+  if (prev !== S.currentInterval) scheduleNext();
 
   renderAlerts(results);
 
@@ -1863,8 +2225,8 @@ async function fetchAll() {
       }, 8000);
     }
   }
-  const active=S.buses.filter(b=>!S.arrived.has(b.tdxName+'_'+b.dir));
-  if (S.buses.length>0&&active.length===0&&S.buses.every(b=>b._removeScheduled)) {
+  const stillActive=S.buses.filter(b=>!S.arrived.has(b.tdxName+'_'+b.dir));
+  if (S.buses.length>0&&stillActive.length===0&&S.buses.every(b=>b._removeScheduled)) {
     // All being removed, handled above
   }
 }
