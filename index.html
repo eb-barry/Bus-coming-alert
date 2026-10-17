@@ -3595,7 +3595,7 @@ async function routesThroughName(city, stopName) {
   const ck = `sorn_${city}_${stopName}`;
   const cached = cGet(ck);
   if (cached) return cached;
-  if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
+  await waitSlot();
   markCall();
   const filter = encodeURIComponent(`Stops/any(d:d/StopName/Zh_tw eq '${odataQuote(stopName)}')`);
   const data = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$filter=${filter}&$format=JSON`));
@@ -3660,10 +3660,27 @@ async function queryStops() {
   const btn = document.getElementById('stopQueryBtn');
   if (btn) btn.disabled = true;
   try {
-    let legs = findLegsByName(await routesThroughName('Taipei', S.originName), S.originName, S.destName);
-    if (!legs.length) {
-      legs = findLegsByName(await routesThroughName('NewTaipei', S.originName), S.originName, S.destName);
+    // 同一段路可能同時有台北市與新北市的車，例如基隆路幹線和綠5。兩個城市都要查。
+    const merged = [];
+    const seen = new Set();
+    let lastError = null;
+    for (const city of ['Taipei', 'NewTaipei']) {
+      let part = [];
+      try {
+        part = findLegsByName(await routesThroughName(city, S.originName), S.originName, S.destName);
+      } catch (e) {
+        lastError = e;
+        continue;
+      }
+      for (const leg of part) {
+        const key = `${leg.label}|${leg.dir}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        merged.push(leg);
+      }
     }
+    if (!merged.length && lastError) throw lastError;
+    let legs = merged;
     legs = await decorateLegs(legs);
     legs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
     S.stopLegs = legs;
