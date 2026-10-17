@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v11';  // first stop-page visit shows station download progress
+const CACHE = 'bus-alert-v12';  // direct routes include both Taipei and New Taipei
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './apple-touch-icon.png',
