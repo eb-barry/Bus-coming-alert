@@ -941,10 +941,18 @@ document.addEventListener('DOMContentLoaded', () => {
   checkPWA();
   updateSaveBtn();
   if ('serviceWorker' in navigator) {
+    let hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) { hadController = true; return; }
+      if (sessionStorage.getItem('sw_reloaded') === '1') return;
+      sessionStorage.setItem('sw_reloaded', '1');
+      location.reload();
+    });
+    sessionStorage.removeItem('sw_reloaded');
     navigator.serviceWorker.register('sw.js')
       .then(reg => {
         S.swReg = reg;
-        // Also store when SW becomes active later
+        reg.update().catch(() => {});
         reg.addEventListener('updatefound', () => {
           reg.installing?.addEventListener('statechange', () => {
             if (reg.active) S.swReg = reg;
@@ -952,14 +960,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       })
       .catch(() => {});
-    // In case SW is already controlling (returning visit)
     navigator.serviceWorker.ready.then(reg => { S.swReg = reg; });
   }
   acquireWakeLock();
   startGPS();
   checkNotifPerm();
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && S.monitoring) fetchAll();
+    if (document.hidden) return;
+    navigator.serviceWorker?.getRegistration().then(reg => reg?.update()).catch(() => {});
+    if (S.monitoring) fetchAll();
   });
   window.addEventListener('beforeunload', stopMonitor);
   document.querySelectorAll('.mbd').forEach(bd =>
