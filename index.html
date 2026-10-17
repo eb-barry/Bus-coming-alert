@@ -161,11 +161,12 @@ body{
 .mode-tab.on{background:var(--P);color:#fff;}
 .home-wrap{display:flex;gap:8px;align-items:stretch;}
 .home-btn{
-  flex:1;padding:16px 12px;border-radius:var(--Rs);
+  width:100%;padding:16px 12px;border-radius:var(--Rs);
   border:2.5px solid var(--P);background:var(--INF-BG);
   font-family:inherit;font-size:1.15rem;font-weight:800;color:var(--P);
   cursor:pointer;touch-action:manipulation;
 }
+.home-btn:disabled{opacity:0.45;cursor:default;}
 .home-edit{
   width:52px;border-radius:var(--Rs);border:2px solid var(--BD);background:#fff;
   font-family:inherit;font-weight:800;color:var(--P);cursor:pointer;touch-action:manipulation;
@@ -182,7 +183,17 @@ body{
   position:absolute;top:2px;right:4px;border:none;background:transparent;
   color:var(--TX2);font-size:0.95rem;padding:2px 4px;cursor:pointer;
 }
+.od-block{display:flex;gap:8px;align-items:stretch;margin-top:10px;}
+.od-fields{flex:1;min-width:0;}
+.od-query{
+  width:4.6rem;padding:8px 0;letter-spacing:0;align-self:stretch;flex-shrink:0;
+}
 .od-row{display:grid;grid-template-columns:1.6rem 1fr;gap:8px;align-items:center;margin-top:8px;}
+.od-fields .od-row:first-child{margin-top:0;}
+.set-stop{display:flex;align-items:center;gap:8px;margin-top:8px;}
+.set-stop span{flex:1;font-weight:800;min-width:0;}
+#namePick{z-index:260;}
+.fav-stop:disabled{opacity:0.45;}
 .od-k{font-weight:800;color:var(--P);text-align:center;}
 .od-row button{
   text-align:left;padding:12px;border-radius:var(--Rs);
@@ -221,6 +232,9 @@ input.st-search{
 .btn:active{transform:scale(0.97);}
 .btn:disabled{opacity:0.4;pointer-events:none;}
 .btn-P{background:var(--P);color:#fff;}
+.btn.od-query{
+  width:4.6rem;flex:0 0 4.6rem;padding:8px 0;letter-spacing:0;align-self:stretch;
+}
 .btn-sm{
   background:transparent;border:2px solid var(--P);color:var(--P);
   padding:10px 16px;width:auto;border-radius:10px;font-size:0.88rem;
@@ -538,13 +552,6 @@ input:focus,select:focus{border-color:var(--P);}
       <div class="dir-grid" id="dirGrid"></div>
     </div>
 
-    <!-- Compare up to 4 routes in one pair of API calls, then pick one -->
-    <div id="compareSec" style="display:none;margin-top:12px;">
-      <label>比較路線</label>
-      <button class="btn btn-P" id="compareQueryBtn" onclick="queryCompare()" style="margin-top:10px">一次查詢位置與站牌</button>
-      <div id="compareList"></div>
-    </div>
-
     <!-- Confirm card -->
     <div id="confirmCard" style="display:none"></div>
 
@@ -564,21 +571,16 @@ input:focus,select:focus{border-color:var(--P);}
 <div id="stopMode" style="display:none">
   <div class="sec">
     <div class="sec-bd" id="stopHome">
-      <div class="home-wrap">
-        <button type="button" class="home-btn" id="homeBtn" onclick="onHomeTap()">回家</button>
-        <button type="button" class="home-edit" id="homeEdit" onclick="openStopSearch('home')">改</button>
-      </div>
+      <button type="button" class="home-btn" id="homeBtn" onclick="tapHome()">回家</button>
       <div class="fav-grid" id="favGrid"></div>
-      <div class="od-row"><span class="od-k">起</span><button type="button" id="odFrom" onclick="focusStopField('origin')">選擇</button></div>
-      <div class="od-row"><span class="od-k">訖</span><button type="button" id="odTo" onclick="focusStopField('dest')">選擇</button></div>
-      <div id="stopLegs"></div>
-    </div>
-    <div class="sec-bd" id="stopSearch" style="display:none">
-      <div style="display:flex;gap:8px;align-items:center">
-        <input id="stopQ" class="st-search" placeholder="站名" autocomplete="off" enterkeyhint="search" oninput="renderStationHits()">
-        <button type="button" class="btn-sm" onclick="closeStopSearch()">返回</button>
+      <div class="od-block">
+        <div class="od-fields">
+          <div class="od-row"><span class="od-k">起</span><button type="button" id="odFrom" onclick="openNamePick('origin')">選擇</button></div>
+          <div class="od-row"><span class="od-k">訖</span><button type="button" id="odTo" onclick="openNamePick('dest')">選擇</button></div>
+        </div>
+        <button type="button" class="btn btn-P od-query" id="stopQueryBtn" onclick="queryStops()" disabled>查詢</button>
       </div>
-      <div id="stopHits"></div>
+      <div id="stopLegs"></div>
     </div>
   </div>
 </div>
@@ -649,6 +651,19 @@ input:focus,select:focus{border-color:var(--P);}
 
 <div class="toast-c" id="toastC"></div>
 
+<div class="mbd" id="namePick">
+  <div class="modal">
+    <div class="mhd">
+      <h2>站名</h2>
+      <button type="button" class="mclose" onclick="closeNamePick()">✕</button>
+    </div>
+    <div class="mbody">
+      <input id="stopQ" class="st-search" type="text" placeholder="站名" autocomplete="off" enterkeyhint="search" oninput="renderStationHits()" style="width:100%">
+      <div id="stopHits"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Settings modal -->
 <div class="mbd" id="settingsModal">
   <div class="modal">
@@ -692,6 +707,21 @@ input:focus,select:focus{border-color:var(--P);}
           </div>
           <button class="btn-sm" onclick="clearStopCache()">🔄 更新站牌</button>
         </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-row">
+        <label>🏠 回家站</label>
+        <div class="set-stop">
+          <span id="setHomeName">未設定</span>
+          <button type="button" class="btn-sm" onclick="openNamePick('home')">選擇</button>
+          <button type="button" class="btn-sm" onclick="clearHomeName()">清除</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>⭐ 預設站牌</label>
+        <div id="setFavList"></div>
       </div>
 
       <div class="divider"></div>
@@ -887,12 +917,12 @@ const S = {
   freshRt:null,    // last batched realtime payload, reused for a few seconds
   mode:'route',
   stationBook:null,
-  homeStop:null,
-  favStops:[],
-  origin:null,
-  dest:null,
-  stopFocus:'origin',
-  picking:null,
+  homeName:'',
+  favNames:[],
+  originName:'',
+  destName:'',
+  awaitOriginGps:false,
+  namePick:null,
   stationHits:[],
   stopLegs:null,
   kbuf:'',
@@ -1499,7 +1529,6 @@ async function doLookup() {
           <div class="dc-dest">往 ${c.to}</div>
           <div class="dc-from">從 ${c.from} 出發</div>
         </div>
-        <button type="button" class="btn-sm cmp-add" onclick="addToCompare(${c.dir})">＋ 加入比較</button>
       </div>`).join('');
     document.getElementById('dirSection').style.display='block';
     document.getElementById('confirmCard').style.display='none';
@@ -1566,7 +1595,6 @@ function selectIntercityRoute(idx) {
         <div class="dc-dest">往 ${c.to}</div>
         <div class="dc-from">從 ${c.from} 出發</div>
       </div>
-      <button type="button" class="btn-sm cmp-add" onclick="addToCompare(${c.dir})">＋ 加入比較</button>
     </div>`).join('');
   document.getElementById('dirSection').style.display='block';
   toast(`✅ 已選擇：${op || resolved.tdxName}`);
@@ -1651,214 +1679,6 @@ function escHtml(s){
   }[c]));
 }
 
-function entryFromPending(dir) {
-  const {route, city, resolved} = S.pendingRoute;
-  const tdxName = resolved.tdxName;
-  const isIntercity = city === 'Intercity';
-  const rtName = isIntercity ? (route.RouteName?.Zh_tw || tdxName) : tdxName;
-  const dep = route.DepartureStopNameZh || '—';
-  const dest = route.DestinationStopNameZh || '—';
-  return {
-    userLabel: S.kbuf,
-    tdxName: rtName,
-    displayName: tdxName,
-    isMapped: resolved.isMapped || isIntercity,
-    isIntercity,
-    operatorName: isIntercity ? (route.Operators?.[0]?.OperatorName?.Zh_tw || route.OperatorName?.Zh_tw || '') : '',
-    dir,
-    city,
-    routeId: route.RouteUID,
-    startStop: dir === 0 ? dep : dest,
-    endStop: dir === 0 ? dest : dep,
-    stops: null,
-    nearSeq: null,
-    _stopUid: route._fromSubRoute ? (route.SubRouteUID || route.RouteUID) : route.RouteUID,
-  };
-}
-
-function addToCompare(dir) {
-  if (!S.kbuf || !S.pendingRoute) { toast('請先查詢路線'); return; }
-  const entry = entryFromPending(dir);
-  if (S.compare.some(b => b.tdxName === entry.tdxName && b.dir === entry.dir && b.city === entry.city)) {
-    toast('這條已經在比較清單');
-    return;
-  }
-  if (S.compare.length >= 4) { toast('比較清單最多 4 條'); return; }
-  S.compare.push(entry);
-  S.compareRows = null;
-  renderCompare();
-  if (S.compare.length === 4) toast('已放滿 4 條，請按一次查詢');
-}
-
-function removeCompare(i) {
-  S.compare.splice(i, 1);
-  if (S.compareRows) S.compareRows.splice(i, 1);
-  if (S.compareRows) {
-    S.compareRows.forEach(r => { r.closest = false; });
-    const best = pickClosest(S.compareRows);
-    if (best) best.closest = true;
-  }
-  renderCompare();
-}
-
-async function ensureStopsForBuses(buses) {
-  const pending = [];
-  for (const bus of buses) {
-    const uid = bus._stopUid || '';
-    const cached = cGet(stopCacheKey(bus.city, bus.tdxName, bus.dir, uid));
-    if (cached) { bus.stops = cached; continue; }
-    pending.push(bus);
-  }
-  const groups = new Map();
-  for (const bus of pending) {
-    const k = busGroupKey(bus);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(bus);
-  }
-  for (const [key, list] of groups) {
-    if (list.length === 1) {
-      const b = list[0];
-      b.stops = await fetchStops(b.city, b.tdxName, b.dir, b._stopUid || b.routeId);
-      continue;
-    }
-    if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
-    markCall();
-    const filter = encodeURIComponent(busesODataFilter(list));
-    const path = key === 'Intercity'
-      ? `/v2/Bus/StopOfRoute/InterCity?$filter=${filter}&$format=JSON`
-      : `/v2/Bus/StopOfRoute/City/${key}?$filter=${filter}&$format=JSON`;
-    const data = tdxArr(await apiFetch(path));
-    for (const bus of list) {
-      let stops = pickStops(data, bus.tdxName, bus.dir, bus.routeId, false);
-      if (!stops.length) stops = await fetchStops(bus.city, bus.tdxName, bus.dir, bus._stopUid || bus.routeId);
-      bus.stops = stops;
-      if (stops.length) cSet(stopCacheKey(bus.city, bus.tdxName, bus.dir, bus._stopUid || ''), stops, STOP_TTL);
-    }
-    updateCacheStatus();
-  }
-}
-
-function scoreBus(bus, rows) {
-  if (S.lat) calcNearest(bus);
-  const userSeq = bus.nearSeq;
-  let meters = null;
-  let userStop = null;
-  if (userSeq && bus.stops?.length) {
-    userStop = stopName(bus, userSeq);
-    const s = bus.stops.find(x => x.StopSequence === userSeq);
-    const la = s?.StopPosition?.PositionLat, lo = s?.StopPosition?.PositionLon;
-    if (la != null && lo != null && S.lat != null) meters = Math.round(haversine(S.lat, S.lng, la, lo));
-  }
-  let away = null, curStop = null;
-  if (userSeq && rows) {
-    const onRoute = rows.filter(r => routeRowMatches(r, bus) && r.Direction === bus.dir && r.BusStatus <= 2);
-    let minD = Infinity, closest = null;
-    for (const b of onRoute) {
-      const diff = userSeq - b.StopSequence;
-      if (diff >= 0 && diff < minD) { minD = diff; closest = b; }
-    }
-    if (closest) { away = minD; curStop = stopName(bus, closest.StopSequence); }
-  }
-  return { bus, meters, away, curStop, userStop, closest: false };
-}
-
-function pickClosest(scored) {
-  const ranked = scored.filter(s => s.meters != null);
-  ranked.sort((a, b) => a.meters - b.meters || ((a.away ?? 999) - (b.away ?? 999)));
-  return ranked[0] || null;
-}
-
-let _compareBusy = false;
-async function queryCompare() {
-  if (_compareBusy) return;
-  if (!S.compare.length) { toast('請先把路線加入比較'); return; }
-  const btn = document.getElementById('compareQueryBtn');
-  _compareBusy = true;
-  if (btn) { btn.disabled = true; btn.textContent = '查詢中…'; }
-  try {
-    await ensureStopsForBuses(S.compare);
-    const groups = new Map();
-    for (const bus of S.compare) {
-      const k = busGroupKey(bus);
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k).push(bus);
-    }
-    const byKey = {};
-    for (const [key, list] of groups) {
-      if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
-      markCall();
-      const rows = tdxArr(await apiFetch(realtimePathFor(key, list)));
-      byKey[key] = { rows, ids: new Set(list.map(busIdentity)) };
-    }
-    S.freshRt = { at: Date.now(), byKey };
-    const scored = S.compare.map(bus => scoreBus(bus, byKey[busGroupKey(bus)].rows));
-    const best = pickClosest(scored);
-    if (best) best.closest = true;
-    S.compareRows = scored;
-    renderCompare();
-    if (!S.lat) toast('尚未取得 GPS，請自行點選要監控的路線');
-    else if (best) {
-      const nm = best.bus.isMapped ? best.bus.tdxName : best.bus.userLabel;
-      toast(`離您最近的是 ${nm}`);
-    } else toast('已取得各線位置，請點選要監控的路線');
-  } catch (e) {
-    toast('❌ ' + e.message);
-  } finally {
-    _compareBusy = false;
-    if (btn) { btn.disabled = false; }
-    renderCompare();
-  }
-}
-
-function renderCompare() {
-  const sec = document.getElementById('compareSec');
-  const list = document.getElementById('compareList');
-  const btn = document.getElementById('compareQueryBtn');
-  if (!sec || !list) return;
-  if (!S.compare.length) {
-    sec.style.display = 'none';
-    S.compareRows = null;
-    return;
-  }
-  sec.style.display = 'block';
-  if (btn && !_compareBusy) btn.textContent = `一次查詢這 ${S.compare.length} 條的位置與站牌`;
-  const rows = S.compareRows;
-  const cards = S.compare.map((b, i) => {
-    const scored = rows ? rows[i] : null;
-    const nm = b.isMapped ? b.tdxName : b.userLabel;
-    const dl = b.dir === 0 ? '去程' : '返程';
-    const city = b.city === 'Taipei' ? '台北市' : b.city === 'NewTaipei' ? '新北市' : '公路客運';
-    let detail = `${city} · 往 ${escHtml(b.endStop)}`;
-    if (scored) {
-      const stopLine = scored.userStop
-        ? `最近站牌：${escHtml(scored.userStop)}${scored.meters != null ? `（距您 ${scored.meters} 公尺）` : ''}`
-        : '最近站牌：取得定位後才能計算';
-      const busLine = scored.away == null
-        ? '目前沒有接近您這站的車輛'
-        : scored.away === 0
-          ? `公車已到 ${escHtml(scored.userStop || '您的站牌')}`
-          : `公車在 ${escHtml(scored.curStop)}，還有 ${scored.away} 站`;
-      detail = `${stopLine}<br>${busLine}`;
-    }
-    const badge = scored?.closest ? '<div class="cmp-badge">離您最近</div>' : '';
-    const monitorLabel = scored?.closest ? '監控最近的這條' : '監控這條';
-    return `
-      <div class="cmp-card ${scored?.closest ? 'closest' : ''}">
-        ${badge}
-        <div class="cmp-name">${escHtml(nm)}（${dl}）</div>
-        <div class="cmp-detail">${detail}</div>
-        <div class="cmp-actions">
-          <button type="button" class="btn-sm" onclick="monitorCompare(${i})">${monitorLabel}</button>
-          <button type="button" class="btn-sm" style="border-color:var(--ERR);color:var(--ERR)" onclick="removeCompare(${i})">移除</button>
-        </div>
-      </div>`;
-  }).join('');
-  const closestBtn = rows && rows.some(r => r.closest)
-    ? '<button type="button" class="btn btn-P" style="margin-top:8px" onclick="monitorClosest()">監控離我最近的一條</button>'
-    : '';
-  list.innerHTML = closestBtn + cards;
-}
-
 async function monitorOnly(entry) {
   if (!entry) return;
   if (!entry.stops?.length) {
@@ -1882,18 +1702,6 @@ async function monitorOnly(entry) {
   toast(`開始監控 ${nm}（${dl}）`);
   if (!S.monitoring) startMonitor();
   else fetchAll();
-}
-
-function monitorCompare(i) {
-  const row = S.compareRows ? S.compareRows[i] : null;
-  const entry = row ? row.bus : S.compare[i];
-  monitorOnly(entry);
-}
-
-function monitorClosest() {
-  const best = (S.compareRows || []).find(r => r.closest);
-  if (!best) { toast('請先查詢，或自行點選一條'); return; }
-  monitorOnly(best.bus);
 }
 
 /* ══════════════════════════════════════════
@@ -2001,7 +1809,7 @@ function removeActiveBus(i) {
 function clearAll() {
   S.busQueue=[]; S.buses=[]; S.arrived.clear(); S.lastAlert={};
   S.compare=[]; S.compareRows=null; S.freshRt=null;
-  stopMonitor(); renderMonitor(); renderQueue(); renderCompare(); updateSaveBtn(); toast('已清除全部路線');
+  stopMonitor(); renderMonitor(); renderQueue(); updateSaveBtn(); toast('已清除全部路線');
 }
 
 /* ══════════════════════════════════════════
@@ -2079,7 +1887,10 @@ function startGPS() {
       updateGpsUI(true);
       updateStatus();
       if (pLat&&S.monitoring&&haversine(pLat,pLng,S.lat,S.lng)>50) recomputeNearest();
-      if (S.picking && !document.getElementById('stopQ')?.value.trim()) renderStationHits();
+      if (S.mode === 'stop' && S.awaitOriginGps) fillOriginFromGps();
+      const pick = document.getElementById('namePick');
+      const qEl = document.getElementById('stopQ');
+      if (pick?.classList.contains('open') && qEl && !qEl.value.trim()) renderStationHits();
     },
     err => { updateGpsUI(false,err.code===1?'已拒絕定位':'定位失敗'); setTimeout(startGPS,15000); },
     {enableHighAccuracy:true,timeout:15000,maximumAge:25000}
@@ -3112,6 +2923,7 @@ function openSettings(){
   maskCredInput('cfgId', 'tdx_id');
   maskCredInput('cfgSecret', 'tdx_sec');
   updateCacheStatus();
+  renderSetStops();
   if (IS_IOS) {
     // Hide notification section on iOS — not supported
     const nb=document.getElementById('notifBanner');
@@ -3144,24 +2956,35 @@ function checkPWA(){
 }
 
 /* ══════════════════════════════════════════
-   STOP MODE — station search, origin/dest, home
+   STOP MODE — names in localStorage, query by stop name
 ══════════════════════════════════════════ */
 function loadStopPrefs() {
-  try { S.homeStop = JSON.parse(ls('home_stop') || 'null'); } catch (e) { S.homeStop = null; }
-  try { S.favStops = JSON.parse(ls('fav_stops') || '[]'); } catch (e) { S.favStops = []; }
-  if (!Array.isArray(S.favStops)) S.favStops = [];
-  S.favStops = S.favStops.slice(0, 9);
+  let home = ls('stop_home_name');
+  if (home == null) {
+    try {
+      const old = JSON.parse(ls('home_stop') || 'null');
+      if (old && old.name) home = old.name;
+    } catch (e) {}
+  }
+  S.homeName = (home || '').trim();
+  let favs = null;
+  try { favs = JSON.parse(ls('stop_fav_names') || 'null'); } catch (e) {}
+  if (!Array.isArray(favs)) {
+    try {
+      const old = JSON.parse(ls('fav_stops') || '[]');
+      favs = Array.isArray(old) ? old.map(x => (x && x.name) ? x.name : '') : [];
+    } catch (e) { favs = []; }
+  }
+  S.favNames = Array.from({ length: 9 }, (_, i) => String(favs[i] || '').trim());
 }
 function saveStopPrefs() {
-  lsSet('home_stop', JSON.stringify(S.homeStop));
-  lsSet('fav_stops', JSON.stringify(S.favStops));
+  lsSet('stop_home_name', S.homeName || '');
+  lsSet('stop_fav_names', JSON.stringify(S.favNames));
 }
-function cityShort(city) { return city === 'NewTaipei' ? '新北' : '台北'; }
 
 function setMode(mode) {
   if (S.mode === mode) return;
-  const was = S.monitoring;
-  if (was) stopMonitor();
+  if (S.monitoring) stopMonitor();
   S.mode = mode;
   const route = document.getElementById('routeMode');
   const stop = document.getElementById('stopMode');
@@ -3170,95 +2993,89 @@ function setMode(mode) {
   document.getElementById('tabRoute')?.classList.toggle('on', mode === 'route');
   document.getElementById('tabStop')?.classList.toggle('on', mode === 'stop');
   if (mode === 'route' && S.buses.length) startMonitor();
-  if (mode === 'stop') renderStopHome();
+  if (mode === 'stop') {
+    S.awaitOriginGps = S.lat == null;
+    renderStopHome();
+    fillOriginFromGps();
+  }
 }
 
 function renderStopHome() {
   const homeBtn = document.getElementById('homeBtn');
-  const homeEdit = document.getElementById('homeEdit');
-  if (!homeBtn) return;
-  if (S.homeStop) {
-    homeBtn.textContent = '回家　' + S.homeStop.name;
-    if (homeEdit) homeEdit.style.display = '';
-  } else {
-    homeBtn.textContent = '設定回家站';
-    if (homeEdit) homeEdit.style.display = 'none';
+  if (homeBtn) {
+    homeBtn.textContent = S.homeName ? '回家　' + S.homeName : '回家';
+    homeBtn.disabled = !S.homeName;
   }
   const grid = document.getElementById('favGrid');
   if (grid) {
-    let html = '';
-    for (let i = 0; i < 9; i++) {
-      const s = S.favStops[i];
-      if (!s) {
-        html += `<button type="button" class="fav-stop empty" onclick="openStopSearch('fav')">＋</button>`;
-      } else {
-        html += `<button type="button" class="fav-stop" onclick="tapFav(${i})">${escHtml(s.name)}<span class="x" onclick="removeFav(${i},event)">×</span></button>`;
-      }
-    }
-    grid.innerHTML = html;
+    grid.innerHTML = S.favNames.map((name, i) => name
+      ? `<button type="button" class="fav-stop" onclick="tapFav(${i})">${escHtml(name)}</button>`
+      : `<button type="button" class="fav-stop empty" disabled></button>`
+    ).join('');
   }
   const from = document.getElementById('odFrom');
   const to = document.getElementById('odTo');
-  if (from) {
-    from.textContent = S.origin ? S.origin.name : '選擇';
-    from.classList.toggle('sel', S.stopFocus === 'origin');
-  }
-  if (to) {
-    to.textContent = S.dest ? S.dest.name : '選擇';
-    to.classList.toggle('sel', S.stopFocus === 'dest');
-  }
+  if (from) from.textContent = S.originName || '選擇';
+  if (to) to.textContent = S.destName || '選擇';
+  const q = document.getElementById('stopQueryBtn');
+  if (q) q.disabled = !(S.originName && S.destName);
 }
 
-function onHomeTap() {
-  if (!S.homeStop) { openStopSearch('home'); return; }
-  goHome();
-}
-
-function focusStopField(which) {
-  S.stopFocus = which;
+function tapHome() {
+  if (!S.homeName) return;
+  S.destName = S.homeName;
+  S.stopLegs = null;
   renderStopHome();
-  openStopSearch(which);
+  const box = document.getElementById('stopLegs');
+  if (box) box.innerHTML = '';
 }
-
 function tapFav(i) {
-  const s = S.favStops[i];
-  if (!s) { openStopSearch('fav'); return; }
-  if (!S.origin || S.stopFocus === 'origin') {
-    S.origin = s;
-    S.stopFocus = 'dest';
-  } else {
-    S.dest = s;
-    S.stopFocus = 'origin';
-  }
+  const name = S.favNames[i];
+  if (!name) return;
+  S.destName = name;
+  S.stopLegs = null;
   renderStopHome();
-  if (S.origin && S.dest) onStopsReady();
+  const box = document.getElementById('stopLegs');
+  if (box) box.innerHTML = '';
 }
 
-function removeFav(i, ev) {
-  ev.stopPropagation();
-  S.favStops.splice(i, 1);
+function renderSetStops() {
+  const h = document.getElementById('setHomeName');
+  if (h) h.textContent = S.homeName || '未設定';
+  const box = document.getElementById('setFavList');
+  if (!box) return;
+  box.innerHTML = S.favNames.map((name, i) => `
+    <div class="set-stop">
+      <span>${name ? escHtml(name) : '未設定'}</span>
+      <button type="button" class="btn-sm" onclick="openNamePick(${i})">選擇</button>
+      <button type="button" class="btn-sm" onclick="clearFavName(${i})">清除</button>
+    </div>`).join('');
+}
+function clearHomeName() {
+  S.homeName = '';
   saveStopPrefs();
+  renderSetStops();
+  renderStopHome();
+}
+function clearFavName(i) {
+  S.favNames[i] = '';
+  saveStopPrefs();
+  renderSetStops();
   renderStopHome();
 }
 
-function openStopSearch(purpose) {
-  S.picking = purpose;
-  const home = document.getElementById('stopHome');
-  const search = document.getElementById('stopSearch');
-  if (home) home.style.display = 'none';
-  if (search) search.style.display = 'block';
+function openNamePick(target) {
+  S.namePick = target;
+  document.getElementById('namePick')?.classList.add('open');
   const input = document.getElementById('stopQ');
-  if (input) { input.value = ''; input.focus(); }
-  ensureStations().then(() => renderStationHits()).catch(e => toast('❌ ' + e.message));
+  if (input) input.value = '';
+  ensureStations()
+    .then(() => { renderStationHits(); input?.focus(); })
+    .catch(e => toast('❌ ' + e.message));
 }
-
-function closeStopSearch() {
-  S.picking = null;
-  const home = document.getElementById('stopHome');
-  const search = document.getElementById('stopSearch');
-  if (search) search.style.display = 'none';
-  if (home) home.style.display = 'block';
-  renderStopHome();
+function closeNamePick() {
+  S.namePick = null;
+  document.getElementById('namePick')?.classList.remove('open');
 }
 
 let _stationLoad = null;
@@ -3268,7 +3085,6 @@ function ensureStations() {
   _stationLoad = loadStations().finally(() => { _stationLoad = null; });
   return _stationLoad;
 }
-
 function normalizeStations(raw, city) {
   return (raw || []).map(s => ({
     id: String(s.StationID || '').trim(),
@@ -3279,7 +3095,6 @@ function normalizeStations(raw, city) {
     addr: s.StationAddress || '',
   })).filter(s => s.id && s.name);
 }
-
 async function fetchStationCity(city) {
   if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
   markCall();
@@ -3292,7 +3107,6 @@ async function fetchStationCity(city) {
     return tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`));
   }
 }
-
 async function loadStations() {
   const book = [];
   for (const city of ['Taipei', 'NewTaipei']) {
@@ -3307,26 +3121,78 @@ async function loadStations() {
   return book;
 }
 
+function stationClusters(book) {
+  const byName = new Map();
+  for (const s of book || []) {
+    if (!s.name) continue;
+    const list = byName.get(s.name) || [];
+    list.push(s);
+    byName.set(s.name, list);
+  }
+  const out = [];
+  for (const [name, list] of byName) {
+    const groups = [];
+    for (const s of list) {
+      let g = null;
+      if (s.lat != null && s.lon != null) {
+        g = groups.find(gr => gr.lat != null && haversine(gr.lat, gr.lon, s.lat, s.lon) <= 200);
+      }
+      if (!g) {
+        groups.push({ name, lat: s.lat ?? null, lon: s.lon ?? null, addr: s.addr || '' });
+      } else if (!g.addr && s.addr) {
+        g.addr = s.addr;
+      }
+    }
+    out.push(...groups);
+  }
+  return out;
+}
+
 function searchStations(q) {
-  const book = S.stationBook || [];
+  const clusters = stationClusters(S.stationBook || []);
+  const counts = new Map();
+  for (const c of clusters) counts.set(c.name, (counts.get(c.name) || 0) + 1);
   const query = (q || '').trim();
+  const mark = c => ({ ...c, ambiguous: (counts.get(c.name) || 0) > 1 });
   if (!query) {
     if (S.lat == null) return [];
-    return book
-      .filter(s => s.lat != null && s.lon != null)
-      .map(s => ({ s, d: haversine(S.lat, S.lng, s.lat, s.lon) }))
+    return clusters
+      .filter(c => c.lat != null && c.lon != null)
+      .map(c => ({ c, d: haversine(S.lat, S.lng, c.lat, c.lon) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, 20)
-      .map(x => x.s);
+      .map(x => ({ ...mark(x.c), meters: Math.round(x.d) }));
   }
   const hits = [];
-  for (const s of book) {
-    const i = s.name.indexOf(query);
+  for (const c of clusters) {
+    const i = c.name.indexOf(query);
     if (i < 0) continue;
-    hits.push({ s, i, start: i === 0 ? 0 : 1 });
+    hits.push({ c, i, start: i === 0 ? 0 : 1 });
   }
-  hits.sort((a, b) => a.start - b.start || a.i - b.i || a.s.name.length - b.s.name.length);
-  return hits.slice(0, 30).map(h => h.s);
+  hits.sort((a, b) => a.start - b.start || a.i - b.i || a.c.name.length - b.c.name.length);
+  return hits.slice(0, 30).map(h => mark(h.c));
+}
+
+function nearestStopName() {
+  if (S.lat == null || !S.stationBook) return '';
+  let best = '', bd = Infinity;
+  for (const c of stationClusters(S.stationBook)) {
+    if (c.lat == null || c.lon == null) continue;
+    const d = haversine(S.lat, S.lng, c.lat, c.lon);
+    if (d < bd) { bd = d; best = c.name; }
+  }
+  return best;
+}
+
+function fillOriginFromGps() {
+  ensureStations().then(() => {
+    if (S.mode !== 'stop') return;
+    const name = nearestStopName();
+    if (!name) { S.awaitOriginGps = S.lat == null; return; }
+    S.originName = name;
+    S.awaitOriginGps = false;
+    renderStopHome();
+  }).catch(e => toast('❌ ' + e.message));
 }
 
 function renderStationHits() {
@@ -3342,64 +3208,40 @@ function renderStationHits() {
     return;
   }
   box.innerHTML = hits.map((s, i) => {
-    const fav = S.favStops.some(f => f.city === s.city && f.id === s.id);
-    const isHome = S.homeStop && S.homeStop.city === s.city && S.homeStop.id === s.id;
-    let dist = '';
-    if (!q.trim() && S.lat != null && s.lat != null) {
-      dist = ' · ' + Math.round(haversine(S.lat, S.lng, s.lat, s.lon)) + ' 公尺';
-    }
-    return `<div class="st-hit" onclick="chooseStation(${i})">
+    const extra = s.ambiguous && s.addr ? escHtml(String(s.addr).slice(0, 16)) : '';
+    const dist = s.meters != null ? `${s.meters} 公尺` : '';
+    const meta = [extra, dist].filter(Boolean).join(' · ');
+    return `<button type="button" class="st-hit" onclick="chooseCluster(${i})">
       <div style="flex:1">
         <div class="nm">${escHtml(s.name)}</div>
-        <div class="meta">${cityShort(s.city)}${dist}</div>
+        ${meta ? `<div class="meta">${meta}</div>` : ''}
       </div>
-      <button type="button" class="icon-mini" onclick="event.stopPropagation(); hitFav(${i})">${fav ? '★' : '☆'}</button>
-      <button type="button" class="icon-mini" onclick="event.stopPropagation(); hitHome(${i})">${isHome ? '家' : '設家'}</button>
-    </div>`;
+    </button>`;
   }).join('');
 }
 
-function chooseStation(i) {
-  const s = S.stationHits[i];
-  if (!s) return;
-  if (S.picking === 'home') { hitHome(i); closeStopSearch(); return; }
-  if (S.picking === 'fav') {
-    if (!S.favStops.some(f => f.city === s.city && f.id === s.id)) hitFav(i);
-    closeStopSearch();
-    return;
+function chooseCluster(i) {
+  const c = S.stationHits[i];
+  if (!c) return;
+  if (S.namePick === 'home') {
+    S.homeName = c.name;
+    saveStopPrefs();
+    renderSetStops();
+  } else if (typeof S.namePick === 'number') {
+    S.favNames[S.namePick] = c.name;
+    saveStopPrefs();
+    renderSetStops();
+  } else if (S.namePick === 'origin') {
+    S.originName = c.name;
+    S.awaitOriginGps = false;
+  } else if (S.namePick === 'dest') {
+    S.destName = c.name;
   }
-  if (S.picking === 'dest') S.dest = s;
-  else S.origin = s;
-  if (S.picking === 'origin') S.stopFocus = 'dest';
-  closeStopSearch();
-  if (S.origin && S.dest) onStopsReady();
-}
-
-function hitFav(i) {
-  const s = S.stationHits[i];
-  if (!s) return;
-  const at = S.favStops.findIndex(f => f.city === s.city && f.id === s.id);
-  if (at >= 0) S.favStops.splice(at, 1);
-  else if (S.favStops.length >= 9) { toast('已滿'); return; }
-  else S.favStops.push(s);
-  saveStopPrefs();
-  renderStationHits();
-}
-
-function hitHome(i) {
-  const s = S.stationHits[i];
-  if (!s) return;
-  S.homeStop = s;
-  saveStopPrefs();
-  stationRoutes(s.city, s.id).catch(() => {});
-  renderStationHits();
-  toast('已設定回家站');
-}
-
-function stopIs(stop, station) {
-  if (stop.sid && station.id && String(stop.sid) === String(station.id)) return true;
-  if (!stop.sid && stop.name === station.name) return true;
-  return false;
+  S.stopLegs = null;
+  const box = document.getElementById('stopLegs');
+  if (box) box.innerHTML = '';
+  closeNamePick();
+  renderStopHome();
 }
 
 function legHead(route) {
@@ -3407,14 +3249,14 @@ function legHead(route) {
   return route.dep || route.stops[route.stops.length - 1]?.name || '';
 }
 
-function findLegs(routes, origin, dest) {
+function findLegsByName(routes, originName, destName) {
   const out = [];
   const seen = new Set();
   for (const r of routes) {
-    const a = r.stops.find(s => stopIs(s, origin));
-    const b = r.stops.find(s => stopIs(s, dest));
+    const a = r.stops.find(s => s.name === originName);
+    const b = r.stops.find(s => s.name === destName);
     if (!a || !b || !(a.seq < b.seq)) continue;
-    const key = `${r.city}|${r.routeId}|${r.dir}|${a.seq}|${b.seq}`;
+    const key = `${r.city}|${r.routeId}|${r.sub || ''}|${r.dir}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const label = r.sub && r.sub !== r.name ? r.sub : r.name;
@@ -3427,15 +3269,14 @@ function findLegs(routes, origin, dest) {
   return out;
 }
 
-async function stationRoutes(city, stationId) {
-  const ck = `sor_${city}_${stationId}`;
+async function routesThroughName(city, stopName) {
+  const ck = `sorn_${city}_${stopName}`;
   const cached = cGet(ck);
   if (cached) return cached;
   if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
   markCall();
-  const data = tdxArr(await apiFetch(
-    `/v2/Bus/StopOfRoute/City/${city}/PassThrough/Station/${encodeURIComponent(stationId)}?$format=JSON`
-  ));
+  const filter = encodeURIComponent(`Stops/any(d:d/StopName/Zh_tw eq '${odataQuote(stopName)}')`);
+  const data = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$filter=${filter}&$format=JSON`));
   const slim = data.map(r => ({
     routeId: r.RouteUID || '',
     name: (r.RouteName?.Zh_tw || '').trim(),
@@ -3454,22 +3295,6 @@ async function stationRoutes(city, stationId) {
   })).filter(r => r.name && r.stops.length);
   if (slim.length) cSet(ck, slim, STOP_TTL);
   return slim;
-}
-
-async function connectStops(origin, dest) {
-  let legs = findLegs(await stationRoutes(origin.city, origin.id), origin, dest);
-  if (!legs.length) {
-    try { legs = findLegs(await stationRoutes(dest.city, dest.id), origin, dest); }
-    catch (e) { if (!String(e.message).includes('頻率')) legs = []; else throw e; }
-  }
-  if (!legs.length) {
-    const other = origin.city === 'Taipei' ? 'NewTaipei' : 'Taipei';
-    if (other !== dest.city) {
-      try { legs = findLegs(await stationRoutes(other, origin.id), origin, dest); }
-      catch (e) { if (String(e.message).includes('頻率')) throw e; }
-    }
-  }
-  return legs;
 }
 
 async function decorateLegs(legs) {
@@ -3503,18 +3328,20 @@ async function decorateLegs(legs) {
 }
 
 let _stopBusy = false;
-async function onStopsReady() {
+async function queryStops() {
   if (_stopBusy) return;
-  if (!S.origin || !S.dest) return;
-  if (S.origin.city === S.dest.city && S.origin.id === S.dest.id) {
-    toast('起站與訖站相同');
-    return;
-  }
+  if (!S.originName || !S.destName) return;
+  if (S.originName === S.destName) { toast('起站與訖站相同'); return; }
   _stopBusy = true;
   const box = document.getElementById('stopLegs');
   if (box) box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">查詢中</div>';
+  const btn = document.getElementById('stopQueryBtn');
+  if (btn) btn.disabled = true;
   try {
-    let legs = await connectStops(S.origin, S.dest);
+    let legs = findLegsByName(await routesThroughName('Taipei', S.originName), S.originName, S.destName);
+    if (!legs.length) {
+      legs = findLegsByName(await routesThroughName('NewTaipei', S.originName), S.originName, S.destName);
+    }
     legs = await decorateLegs(legs);
     legs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
     S.stopLegs = legs;
@@ -3524,6 +3351,7 @@ async function onStopsReady() {
     toast('❌ ' + e.message);
   } finally {
     _stopBusy = false;
+    renderStopHome();
   }
 }
 
@@ -3538,12 +3366,10 @@ function renderStopLegs() {
   box.innerHTML = legs.map((leg, i) => {
     const pos = leg.away == null ? '尚未發車' : leg.away === 0 ? '已到起站' : `還有 ${leg.away} 站`;
     const where = leg.curStop ? ' · ' + escHtml(leg.curStop) : '';
-    const walk = leg.walk > 80 ? `<div class="meta">步行 ${leg.walk} 公尺到 ${escHtml(leg.fromName)}</div>` : '';
     return `<button type="button" class="st-hit" onclick="monitorLeg(${i})">
       <div style="flex:1">
         <div class="nm">${escHtml(leg.label)}　往 ${escHtml(leg.head || leg.toName)}</div>
         <div class="meta">${pos}${where}</div>
-        ${walk}
       </div>
     </button>`;
   }).join('');
@@ -3576,59 +3402,6 @@ function monitorLeg(i) {
   monitorOnly(legToBus(leg));
 }
 
-async function goHome() {
-  if (!S.homeStop) { openStopSearch('home'); return; }
-  if (S.lat == null) {
-    S.dest = S.homeStop;
-    S.stopFocus = 'origin';
-    renderStopHome();
-    toast('請選擇起站');
-    openStopSearch('origin');
-    return;
-  }
-  if (_stopBusy) return;
-  _stopBusy = true;
-  const box = document.getElementById('stopLegs');
-  if (box) box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">查詢中</div>';
-  try {
-    const routes = await stationRoutes(S.homeStop.city, S.homeStop.id);
-    const options = [];
-    const seen = new Set();
-    for (const r of routes) {
-      const home = r.stops.find(s => stopIs(s, S.homeStop));
-      if (!home) continue;
-      let best = null;
-      for (const s of r.stops) {
-        if (s.seq >= home.seq || s.lat == null || s.lon == null) continue;
-        const d = haversine(S.lat, S.lng, s.lat, s.lon);
-        if (!best || d < best.d) best = { s, d };
-      }
-      if (!best || best.d > 1200) continue;
-      const key = `${r.routeId}|${r.sub || ''}|${r.dir}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const label = r.sub && r.sub !== r.name ? r.sub : r.name;
-      options.push({
-        routeId: r.routeId, name: r.name, label, dir: r.dir, city: r.city,
-        fromSeq: best.s.seq, toSeq: home.seq, fromName: best.s.name, toName: home.name,
-        head: legHead(r), stops: r.stops, walk: Math.round(best.d),
-      });
-    }
-    options.sort((a, b) => a.walk - b.walk);
-    const legs = await decorateLegs(options.slice(0, 12));
-    legs.sort((a, b) => a.walk - b.walk || ((a.away ?? 999) - (b.away ?? 999)));
-    S.origin = null;
-    S.dest = S.homeStop;
-    S.stopLegs = legs;
-    renderStopHome();
-    renderStopLegs();
-  } catch (e) {
-    if (box) box.innerHTML = '';
-    toast('❌ ' + e.message);
-  } finally {
-    _stopBusy = false;
-  }
-}
 </script>
 </body>
 </html>
