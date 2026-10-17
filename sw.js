@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v7';  // route / stop modes, station search
+const CACHE = 'bus-alert-v9';  // network-first app shell so a new release replaces the old UI
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './apple-touch-icon.png',
@@ -9,7 +9,10 @@ const STATIC = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(STATIC)));
+  // One missing icon must not block the new shell from installing.
+  e.waitUntil(caches.open(CACHE).then(cache =>
+    Promise.all(STATIC.map(url => cache.add(url).catch(() => {})))
+  ));
   self.skipWaiting();
 });
 
@@ -22,6 +25,12 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+function isAppShell(url, request) {
+  if (request.mode === 'navigate') return true;
+  const path = url.pathname;
+  return path.endsWith('/') || path.endsWith('/index.html') || path.endsWith('/manifest.json');
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   // Never cache TDX API calls
@@ -29,7 +38,26 @@ self.addEventListener('fetch', e => {
     e.respondWith(fetch(e.request));
     return;
   }
-  e.respondWith(caches.match(e.request).then(c => c || fetch(e.request)));
+  // Leave sw.js to the browser update check. Caching it here freezes the app on the old release.
+  if (url.origin === self.location.origin && url.pathname.endsWith('/sw.js')) return;
+
+  if (url.origin === self.location.origin && isAppShell(url, e.request)) {
+    e.respondWith((async () => {
+      try {
+        const fresh = await fetch(e.request);
+        const cache = await caches.open(CACHE);
+        cache.put(e.request, fresh.clone());
+        return fresh;
+      } catch (err) {
+        return (await caches.match(e.request))
+          || (await caches.match('./index.html'))
+          || new Response('離線', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      }
+    })());
+    return;
+  }
+
+  e.respondWith(caches.match(e.request).then(cached => cached || fetch(e.request)));
 });
 
 // Handle messages from main thread
