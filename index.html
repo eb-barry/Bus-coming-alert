@@ -199,6 +199,20 @@ body{
 }
 #namePick .mhd{border-radius:0;flex-shrink:0;}
 #namePick .mbody{flex:1;min-height:0;overflow-y:auto;}
+.catalog-ov{
+  display:none;position:fixed;inset:0;z-index:280;
+  background:rgba(10,16,32,0.55);align-items:center;justify-content:center;padding:18px;
+}
+.catalog-ov.show{display:flex;}
+.catalog-card{
+  width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px 18px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.28);
+}
+.catalog-title{font-size:1.25rem;font-weight:800;color:var(--P);}
+.catalog-msg{margin:10px 0 16px;line-height:1.65;color:var(--TX);font-weight:700;}
+.catalog-bar{height:14px;background:#e8eef8;border-radius:999px;overflow:hidden;}
+.catalog-bar > div{height:100%;width:0;background:var(--P);border-radius:999px;transition:width .25s linear;}
+.catalog-meta{margin-top:10px;font-weight:800;color:var(--TX2);min-height:1.4em;}
 .pick-row{display:flex;gap:8px;align-items:center;}
 .pick-row .st-search{flex:1;}
 .fav-stop:disabled{opacity:0.45;}
@@ -659,6 +673,16 @@ input:focus,select:focus{border-color:var(--P);}
 
 <div class="toast-c" id="toastC"></div>
 
+<div id="catalogOverlay" class="catalog-ov">
+  <div class="catalog-card">
+    <div class="catalog-title" id="catalogTitle">正在下載站牌資料</div>
+    <p class="catalog-msg" id="catalogMsg"></p>
+    <div class="catalog-bar" aria-hidden="true"><div id="catalogBar"></div></div>
+    <div class="catalog-meta" id="catalogMeta">準備中</div>
+    <button type="button" class="btn btn-P" id="catalogRetry" style="display:none;margin-top:16px" onclick="retryStopCatalog()">再試一次</button>
+  </div>
+</div>
+
 <div class="mbd" id="namePick">
   <div class="modal">
     <div class="mhd">
@@ -950,9 +974,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStopPrefs();
   renderFavList();
   renderStopHome();
-  if (ls('tdx_id') && ls('tdx_sec') && !catalogInfo()) {
-    ensureStations().then(() => updateCacheStatus()).catch(() => updateCacheStatus());
-  }
   checkPWA();
   updateSaveBtn();
   if ('serviceWorker' in navigator) {
@@ -1063,6 +1084,7 @@ function saveKeys() {
   lsSet('tdx_id',id); lsSet('tdx_sec',sc);
   S.token=null; S.tokenExp=0;
   toast('✅ API 金鑰已儲存'); closeModal('settingsModal');
+  if (S.mode === 'stop' && !catalogInfo()) beginStopPage();
 }
 function setFont(size, silent) {
   document.documentElement.dataset.font=(size==='normal')?'':size;
@@ -1273,7 +1295,7 @@ async function getToken() {
   return S.token;
 }
 
-async function apiFetch(path) {
+async function apiFetch(path, onProgress) {
   const tok=await getToken();
   const sep=path.includes('?')?'&':'?';
   const url=TDX_BASE+path+(path.includes('$format')?'':sep+'$format=JSON');
@@ -1282,8 +1304,27 @@ async function apiFetch(path) {
   if (r.status===401) { S.token=null; throw new Error('憑證過期，請重新操作'); }
   if (r.status===404) return [];   // No data found — treat as empty array, not error
   if (!r.ok) throw new Error(`API 錯誤 ${r.status}`);
-  const json=await r.json();
+  const json = await readJsonBody(r, onProgress);
   return Array.isArray(json)?json:(json?.value||json||[]);
+}
+async function readJsonBody(r, onProgress) {
+  if (!onProgress || !r.body || !r.body.getReader) return r.json();
+  const total = Number(r.headers.get('Content-Length')) || 0;
+  const reader = r.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    onProgress(received, total);
+  }
+  const buf = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { buf.set(c, off); off += c.byteLength; }
+  if (!received) return [];
+  return JSON.parse(new TextDecoder().decode(buf));
 }
 
 /* ══════════════════════════════════════════
@@ -3022,12 +3063,101 @@ function setMode(mode) {
   if (stop) stop.style.display = mode === 'stop' ? '' : 'none';
   document.getElementById('tabRoute')?.classList.toggle('on', mode === 'route');
   document.getElementById('tabStop')?.classList.toggle('on', mode === 'stop');
-  if (mode === 'route' && S.buses.length) startMonitor();
+  if (mode === 'route') {
+    if (S.buses.length) startMonitor();
+    if (_catalogState !== 'loading') hideCatalogOverlay();
+  }
   if (mode === 'stop') {
     S.awaitOriginGps = S.lat == null;
     renderStopHome();
-    fillOriginFromGps();
+    beginStopPage();
   }
+}
+
+function catalogDownloadMsg(force) {
+  return force
+    ? '正在更新台北市與新北市的站牌資料。資料較多，請稍候，不要關閉這個畫面。'
+    : '第一次使用站牌功能，要先下載台北市與新北市的站牌資料。資料較多，請稍候，不要關閉這個畫面。';
+}
+function reportCatalog(patch) {
+  S.catalogUi = Object.assign(S.catalogUi || {}, patch);
+  const ui = S.catalogUi;
+  const title = document.getElementById('catalogTitle');
+  const msg = document.getElementById('catalogMsg');
+  const meta = document.getElementById('catalogMeta');
+  const bar = document.getElementById('catalogBar');
+  if (title && ui.title) title.textContent = ui.title;
+  if (msg && ui.msg) msg.textContent = ui.msg;
+  if (meta && ui.meta != null) meta.textContent = ui.meta;
+  if (bar && ui.pct != null) bar.style.width = Math.max(0, Math.min(100, ui.pct)) + '%';
+}
+function showCatalogOverlay(patch) {
+  reportCatalog(patch);
+  const retry = document.getElementById('catalogRetry');
+  if (retry) retry.style.display = 'none';
+  document.getElementById('catalogOverlay')?.classList.add('show');
+}
+function hideCatalogOverlay() {
+  document.getElementById('catalogOverlay')?.classList.remove('show');
+}
+function showCatalogError(message) {
+  reportCatalog({
+    title: '站牌下載未完成',
+    msg: '下載中斷了。請按再試一次，畫面會繼續顯示進度。',
+    meta: message || '請稍後再試',
+    pct: 0,
+  });
+  const retry = document.getElementById('catalogRetry');
+  if (retry) retry.style.display = '';
+  document.getElementById('catalogOverlay')?.classList.add('show');
+}
+function catalogHasData() {
+  return !!(S.stationBook && S.stationBook.length) || !!catalogInfo();
+}
+function beginStopPage() {
+  if (!ls('tdx_id') || !ls('tdx_sec')) {
+    hideCatalogOverlay();
+    openSettings();
+    toast('請先儲存 API 金鑰');
+    return;
+  }
+  if (catalogHasData() && _catalogState !== 'loading') {
+    hideCatalogOverlay();
+    fillOriginFromGps();
+    return;
+  }
+  showCatalogOverlay({
+    title: '正在下載站牌資料',
+    msg: catalogDownloadMsg(false),
+    meta: '準備中',
+    pct: 2,
+  });
+  ensureStations(false).then(() => {
+    hideCatalogOverlay();
+    updateCacheStatus();
+    if (S.mode === 'stop') fillOriginFromGps();
+    renderStationHits();
+  }).catch(e => {
+    if (S.mode === 'stop' || document.getElementById('catalogOverlay')?.classList.contains('show')) {
+      showCatalogError(e.message);
+    }
+  });
+}
+function retryStopCatalog() {
+  S.stationBook = null;
+  showCatalogOverlay({
+    title: '正在下載站牌資料',
+    msg: catalogDownloadMsg(false),
+    meta: '準備中',
+    pct: 2,
+  });
+  ensureStations(true).then(() => {
+    hideCatalogOverlay();
+    updateCacheStatus();
+    if (S.mode === 'stop') fillOriginFromGps();
+    renderStationHits();
+    toast('站名已存到本機');
+  }).catch(e => showCatalogError(e.message));
 }
 
 function renderStopHome() {
@@ -3130,16 +3260,19 @@ function runStopSearch() {
   return ensureStations().then(() => { renderStationHits(); return S.stationBook; }).catch(e => { renderStationHits(); throw e; });
 }
 function refreshStopCatalog() {
-  const status = document.getElementById('cacheStatus');
-  if (status) status.textContent = '下載中';
+  if (!ls('tdx_id') || !ls('tdx_sec')) { openSettings(); toast('請先儲存 API 金鑰'); return; }
+  showCatalogOverlay({
+    title: '正在下載站牌資料',
+    msg: catalogDownloadMsg(true),
+    meta: '準備中',
+    pct: 2,
+  });
   ensureStations(true).then(() => {
+    hideCatalogOverlay();
     toast(S.catalogSaved === false ? '站名已下載，但本機空間不足' : '站名已存到本機');
     updateCacheStatus();
     renderStationHits();
-  }).catch(e => {
-    toast('❌ ' + e.message);
-    updateCacheStatus();
-  });
+  }).catch(e => showCatalogError(e.message));
 }
 
 function zhName(v) {
@@ -3147,16 +3280,23 @@ function zhName(v) {
   if (typeof v === 'string') return v.trim();
   return String(v.Zh_tw || v.Zh_TW || '').trim();
 }
-function waitSlot() {
+function waitSlot(onWait) {
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     const tick = () => {
       if (canCall()) resolve();
       else if (Date.now() - t0 > 65000) reject(new Error('API 呼叫頻率限制中，請稍後再試'));
-      else setTimeout(tick, 500);
+      else { if (onWait) onWait(); setTimeout(tick, 500); }
     };
     tick();
   });
+}
+function bytePct(received, total, from, to) {
+  const span = to - from;
+  const inner = total > 0
+    ? Math.min(1, received / total)
+    : Math.min(0.92, received / (received + 2000000));
+  return from + span * inner;
 }
 function persistCatalog(book) {
   if (cSet('stop_catalog', book, STOP_TTL)) return true;
@@ -3200,20 +3340,21 @@ function ensureStations(force) {
   return job;
 }
 
-async function fetchCityStopNames(city) {
-  await waitSlot();
+async function fetchCityStopNames(city, onBytes) {
+  const hold = () => reportCatalog({ meta: '稍候繼續下載，請不要關閉' });
+  await waitSlot(hold);
   markCall();
   let raw = null;
   try {
-    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$select=Stops&$format=JSON`));
+    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$select=Stops&$format=JSON`, onBytes));
   } catch (e) {
     if (!String(e.message).includes('400')) throw e;
   }
   const named = (raw || []).some(r => (r.Stops || []).some(s => zhName(s.StopName)));
   if (!named) {
-    await waitSlot();
+    await waitSlot(hold);
     markCall();
-    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$format=JSON`));
+    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$format=JSON`, onBytes));
   }
   const rows = [];
   for (const route of raw || []) {
@@ -3229,9 +3370,9 @@ async function fetchCityStopNames(city) {
     }
   }
   if (rows.length) return rows;
-  await waitSlot();
+  await waitSlot(hold);
   markCall();
-  const stations = tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`));
+  const stations = tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`, onBytes));
   return stations.map(s => ({
     name: zhName(s.StationName),
     lat: s.StationPosition?.PositionLat ?? null,
@@ -3255,12 +3396,28 @@ async function loadStopCatalog(force) {
     }
   }
   if (!ls('tdx_id') || !ls('tdx_sec')) throw new Error('請先儲存 API 金鑰');
+  const plan = [
+    ['Taipei', '台北市', 4, 48],
+    ['NewTaipei', '新北市', 48, 92],
+  ];
   const rows = [];
-  for (const city of ['Taipei', 'NewTaipei']) rows.push(...await fetchCityStopNames(city));
+  for (const [city, label, from, to] of plan) {
+    reportCatalog({ meta: `正在下載${label}`, pct: from });
+    rows.push(...await fetchCityStopNames(city, (received, total) => {
+      const mb = (received / 1048576).toFixed(1);
+      const meta = total > 0
+        ? `正在下載${label}　${mb} / ${(total / 1048576).toFixed(1)} MB`
+        : `正在下載${label}　已下載 ${mb} MB`;
+      reportCatalog({ meta, pct: bytePct(received, total, from, to) });
+    }));
+  }
+  reportCatalog({ meta: '正在整理站名並存入手機', pct: 94 });
+  await new Promise(r => setTimeout(r, 40));
   const book = slimCatalog(rows);
   if (!book.length) throw new Error('沒有取得站名');
   S.catalogSaved = persistCatalog(book);
   S.stationBook = book;
+  reportCatalog({ meta: `已存入這支手機　${book.length} 個站名`, pct: 100 });
   return book;
 }
 function slimCatalog(rows) {
