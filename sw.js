@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v9';  // network-first app shell so a new release replaces the old UI
+const CACHE = 'bus-alert-v10';  // stop-name catalog stored locally for settings search
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './apple-touch-icon.png',

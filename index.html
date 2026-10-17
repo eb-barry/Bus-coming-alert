@@ -192,7 +192,15 @@ body{
 .od-fields .od-row:first-child{margin-top:0;}
 .set-stop{display:flex;align-items:center;gap:8px;margin-top:8px;}
 .set-stop span{flex:1;font-weight:800;min-width:0;}
-#namePick{z-index:260;}
+#namePick{z-index:260;align-items:flex-start;padding:0;}
+#namePick .modal{
+  width:100%;max-width:480px;height:100dvh;max-height:100dvh;margin:0 auto;
+  border-radius:0;display:flex;flex-direction:column;
+}
+#namePick .mhd{border-radius:0;flex-shrink:0;}
+#namePick .mbody{flex:1;min-height:0;overflow-y:auto;}
+.pick-row{display:flex;gap:8px;align-items:center;}
+.pick-row .st-search{flex:1;}
 .fav-stop:disabled{opacity:0.45;}
 .od-k{font-weight:800;color:var(--P);text-align:center;}
 .od-row button{
@@ -658,7 +666,11 @@ input:focus,select:focus{border-color:var(--P);}
       <button type="button" class="mclose" onclick="closeNamePick()">✕</button>
     </div>
     <div class="mbody">
-      <input id="stopQ" class="st-search" type="text" placeholder="站名" autocomplete="off" enterkeyhint="search" oninput="renderStationHits()" style="width:100%">
+      <div class="pick-row">
+        <input id="stopQ" class="st-search" type="text" placeholder="站名" autocomplete="off" enterkeyhint="search"
+          oninput="renderStationHits()" onkeyup="renderStationHits()" oncompositionend="renderStationHits()">
+        <button type="button" class="btn-sm" onclick="runStopSearch()">搜尋</button>
+      </div>
       <div id="stopHits"></div>
     </div>
   </div>
@@ -705,7 +717,7 @@ input:focus,select:focus{border-color:var(--P);}
             <div id="cacheStatus">快取狀態：計算中…</div>
             <div id="cacheDate" style="margin-top:2px;font-size:0.75rem"></div>
           </div>
-          <button class="btn-sm" onclick="clearStopCache()">🔄 更新站牌</button>
+          <button class="btn-sm" id="catalogBtn" onclick="refreshStopCatalog()">下載</button>
         </div>
       </div>
 
@@ -938,6 +950,9 @@ document.addEventListener('DOMContentLoaded', () => {
   loadStopPrefs();
   renderFavList();
   renderStopHome();
+  if (ls('tdx_id') && ls('tdx_sec') && !catalogInfo()) {
+    ensureStations().then(() => updateCacheStatus()).catch(() => updateCacheStatus());
+  }
   checkPWA();
   updateSaveBtn();
   if ('serviceWorker' in navigator) {
@@ -1058,31 +1073,37 @@ function setFont(size, silent) {
 function ls(k){ return localStorage.getItem(k); }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function cGet(k){ try{ const x=JSON.parse(ls(k)); if(x&&Date.now()-x.t<x.ttl) return x.d; }catch(e){} return null; }
-function cSet(k,d,ttl){ try{ lsSet(k,JSON.stringify({d,t:Date.now(),ttl})); }catch(e){} }
+function cSet(k,d,ttl){
+  try { localStorage.setItem(k, JSON.stringify({d,t:Date.now(),ttl})); return true; }
+  catch (e) { return false; }
+}
 
-function clearStopCache() {
-  let count=0;
-  for (let i=localStorage.length-1;i>=0;i--) {
-    const k=localStorage.key(i);
-    if (k&&k.startsWith('stops_')) { localStorage.removeItem(k); count++; }
+function purgeBulkCaches() {
+  const drop = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    if (k.startsWith('stops_') || k.startsWith('sor_') || k.startsWith('sorn_') || k.startsWith('stations_')) drop.push(k);
   }
-  toast(`✅ 已清除 ${count} 條路線的站牌快取`);
-  updateCacheStatus();
+  drop.forEach(k => localStorage.removeItem(k));
+}
+
+function catalogInfo() {
+  try {
+    const x = JSON.parse(ls('stop_catalog') || 'null');
+    if (!x || !Array.isArray(x.d) || !x.d.length) return null;
+    return { count: x.d.length, t: x.t, fresh: Date.now() - x.t < (x.ttl || 0) };
+  } catch (e) { return null; }
 }
 
 function updateCacheStatus() {
-  let count=0, oldest=Date.now();
-  for (let i=0;i<localStorage.length;i++) {
-    const k=localStorage.key(i);
-    if (k&&k.startsWith('stops_')) {
-      count++;
-      try{ const x=JSON.parse(localStorage.getItem(k)); if(x.t<oldest) oldest=x.t; }catch(e){}
-    }
-  }
-  document.getElementById('cacheStatus').textContent=
-    count>0?`已快取 ${count} 條路線站牌資料`:'尚無快取資料';
-  document.getElementById('cacheDate').textContent=
-    count>0?`最舊快取：${new Date(oldest).toLocaleDateString('zh-TW')}`:'';
+  const info = catalogInfo();
+  const status = document.getElementById('cacheStatus');
+  const date = document.getElementById('cacheDate');
+  const btn = document.getElementById('catalogBtn');
+  if (status) status.textContent = info ? `已存 ${info.count} 個站名` : '尚未下載站名';
+  if (date) date.textContent = info ? new Date(info.t).toLocaleDateString('zh-TW') : '';
+  if (btn) btn.textContent = info ? '更新' : '下載';
 }
 
 /* ══════════════════════════════════════════
@@ -3073,61 +3094,182 @@ function clearFavName(i) {
   renderStopHome();
 }
 
+let _catalogState = 'idle';
+let _catalogError = '';
+
 function openNamePick(target) {
   S.namePick = target;
   document.getElementById('namePick')?.classList.add('open');
   const input = document.getElementById('stopQ');
   if (input) input.value = '';
+  fitNamePick();
+  renderStationHits();
   ensureStations()
     .then(() => { renderStationHits(); input?.focus(); })
-    .catch(e => toast('❌ ' + e.message));
+    .catch(() => renderStationHits());
 }
 function closeNamePick() {
   S.namePick = null;
   document.getElementById('namePick')?.classList.remove('open');
 }
+function fitNamePick() {
+  const el = document.querySelector('#namePick .modal');
+  const vv = window.visualViewport;
+  if (!el) return;
+  if (!vv) { el.style.height = ''; el.style.marginTop = ''; return; }
+  el.style.height = Math.max(240, Math.round(vv.height)) + 'px';
+  el.style.marginTop = Math.round(vv.offsetTop) + 'px';
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitNamePick);
+  window.visualViewport.addEventListener('scroll', fitNamePick);
+}
+
+function runStopSearch() {
+  renderStationHits();
+  return ensureStations().then(() => { renderStationHits(); return S.stationBook; }).catch(e => { renderStationHits(); throw e; });
+}
+function refreshStopCatalog() {
+  const status = document.getElementById('cacheStatus');
+  if (status) status.textContent = '下載中';
+  ensureStations(true).then(() => {
+    toast(S.catalogSaved === false ? '站名已下載，但本機空間不足' : '站名已存到本機');
+    updateCacheStatus();
+    renderStationHits();
+  }).catch(e => {
+    toast('❌ ' + e.message);
+    updateCacheStatus();
+  });
+}
+
+function zhName(v) {
+  if (!v) return '';
+  if (typeof v === 'string') return v.trim();
+  return String(v.Zh_tw || v.Zh_TW || '').trim();
+}
+function waitSlot() {
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const tick = () => {
+      if (canCall()) resolve();
+      else if (Date.now() - t0 > 65000) reject(new Error('API 呼叫頻率限制中，請稍後再試'));
+      else setTimeout(tick, 500);
+    };
+    tick();
+  });
+}
+function persistCatalog(book) {
+  if (cSet('stop_catalog', book, STOP_TTL)) return true;
+  purgeBulkCaches();
+  if (cSet('stop_catalog', book, STOP_TTL)) return true;
+  const lean = book.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, addr: '' }));
+  return cSet('stop_catalog', lean, STOP_TTL);
+}
+function migrateOldStations() {
+  const taipei = cGet('stations_Taipei') || [];
+  const ntp = cGet('stations_NewTaipei') || [];
+  const rows = [...taipei, ...ntp].map(s => ({
+    name: s.name || zhName(s.StationName),
+    lat: s.lat ?? s.StationPosition?.PositionLat ?? null,
+    lon: s.lon ?? s.StationPosition?.PositionLon ?? null,
+    addr: s.addr || s.StationAddress || '',
+  })).filter(s => s.name);
+  if (!rows.length) return null;
+  const book = slimCatalog(rows);
+  if (!book.length) return null;
+  persistCatalog(book);
+  return book;
+}
 
 let _stationLoad = null;
-function ensureStations() {
-  if (S.stationBook) return Promise.resolve(S.stationBook);
-  if (_stationLoad) return _stationLoad;
-  _stationLoad = loadStations().finally(() => { _stationLoad = null; });
-  return _stationLoad;
+function ensureStations(force) {
+  if (!force && S.stationBook && S.stationBook.length) return Promise.resolve(S.stationBook);
+  if (_stationLoad && !force) return _stationLoad;
+  _catalogState = 'loading';
+  _catalogError = '';
+  const job = loadStopCatalog(!!force).then(book => {
+    _catalogState = 'ready';
+    updateCacheStatus();
+    return book;
+  }).catch(e => {
+    _catalogState = 'error';
+    _catalogError = e.message || '站名下載失敗';
+    throw e;
+  }).finally(() => { if (_stationLoad === job) _stationLoad = null; });
+  _stationLoad = job;
+  return job;
 }
-function normalizeStations(raw, city) {
-  return (raw || []).map(s => ({
-    id: String(s.StationID || '').trim(),
-    name: (s.StationName?.Zh_tw || '').trim(),
-    city,
+
+async function fetchCityStopNames(city) {
+  await waitSlot();
+  markCall();
+  let raw = null;
+  try {
+    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$select=Stops&$format=JSON`));
+  } catch (e) {
+    if (!String(e.message).includes('400')) throw e;
+  }
+  const named = (raw || []).some(r => (r.Stops || []).some(s => zhName(s.StopName)));
+  if (!named) {
+    await waitSlot();
+    markCall();
+    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$format=JSON`));
+  }
+  const rows = [];
+  for (const route of raw || []) {
+    for (const s of route.Stops || []) {
+      const name = zhName(s.StopName);
+      if (!name) continue;
+      rows.push({
+        name,
+        lat: s.StopPosition?.PositionLat ?? null,
+        lon: s.StopPosition?.PositionLon ?? null,
+        addr: '',
+      });
+    }
+  }
+  if (rows.length) return rows;
+  await waitSlot();
+  markCall();
+  const stations = tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`));
+  return stations.map(s => ({
+    name: zhName(s.StationName),
     lat: s.StationPosition?.PositionLat ?? null,
     lon: s.StationPosition?.PositionLon ?? null,
     addr: s.StationAddress || '',
-  })).filter(s => s.id && s.name);
+  })).filter(s => s.name);
 }
-async function fetchStationCity(city) {
-  if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
-  markCall();
-  try {
-    return tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$select=StationID,StationName,StationAddress,StationPosition&$format=JSON`));
-  } catch (e) {
-    if (!String(e.message).includes('400')) throw e;
-    if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
-    markCall();
-    return tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`));
-  }
-}
-async function loadStations() {
-  const book = [];
-  for (const city of ['Taipei', 'NewTaipei']) {
-    let rows = cGet('stations_' + city);
-    if (!rows) {
-      rows = normalizeStations(await fetchStationCity(city), city);
-      if (rows.length) cSet('stations_' + city, rows, STOP_TTL);
+async function loadStopCatalog(force) {
+  if (!force) {
+    const cached = cGet('stop_catalog');
+    if (Array.isArray(cached) && cached.length) {
+      S.stationBook = cached;
+      S.catalogSaved = true;
+      return cached;
     }
-    book.push(...rows);
+    const migrated = migrateOldStations();
+    if (migrated) {
+      S.stationBook = migrated;
+      S.catalogSaved = true;
+      return migrated;
+    }
   }
+  if (!ls('tdx_id') || !ls('tdx_sec')) throw new Error('請先儲存 API 金鑰');
+  const rows = [];
+  for (const city of ['Taipei', 'NewTaipei']) rows.push(...await fetchCityStopNames(city));
+  const book = slimCatalog(rows);
+  if (!book.length) throw new Error('沒有取得站名');
+  S.catalogSaved = persistCatalog(book);
   S.stationBook = book;
   return book;
+}
+function slimCatalog(rows) {
+  return stationClusters(rows).map(c => ({
+    name: c.name,
+    lat: c.lat == null ? null : Math.round(c.lat * 1e5) / 1e5,
+    lon: c.lon == null ? null : Math.round(c.lon * 1e5) / 1e5,
+    addr: String(c.addr || '').slice(0, 24),
+  }));
 }
 
 function stationClusters(book) {
@@ -3179,7 +3321,15 @@ function searchStations(q) {
     hits.push({ c, i, start: i === 0 ? 0 : 1 });
   }
   hits.sort((a, b) => a.start - b.start || a.i - b.i || a.c.name.length - b.c.name.length);
-  return hits.slice(0, 30).map(h => mark(h.c));
+  const seen = new Set();
+  const out = [];
+  for (const h of hits) {
+    if (seen.has(h.c.name)) continue;
+    seen.add(h.c.name);
+    out.push(mark(h.c));
+    if (out.length >= 30) break;
+  }
+  return out;
 }
 
 function nearestStopName() {
@@ -3209,14 +3359,20 @@ function renderStationHits() {
   const input = document.getElementById('stopQ');
   if (!box) return;
   const q = input ? input.value : '';
-  const hits = searchStations(q);
-  S.stationHits = hits;
-  if (!S.stationBook) { box.innerHTML = ''; return; }
-  if (!hits.length) {
-    box.innerHTML = `<div class="meta" style="margin-top:12px;color:var(--TX2)">${q.trim() ? '沒有符合的站牌' : '輸入站名'}</div>`;
+  if (!S.stationBook || !S.stationBook.length) {
+    S.stationHits = [];
+    const msg = _catalogState === 'loading' ? '站名下載中' : (_catalogError || '尚未下載站名');
+    box.innerHTML = `<div class="meta" style="margin-top:12px;color:var(--TX2)">${msg}</div>`;
     return;
   }
-  box.innerHTML = hits.map((s, i) => {
+  const hits = searchStations(q);
+  S.stationHits = hits;
+  if (!hits.length) {
+    box.innerHTML = `<div class="meta" style="margin-top:12px;color:var(--TX2)">${q.trim() ? '沒有符合的站名' : '輸入站名'}</div>`;
+    return;
+  }
+  const head = `<div class="meta" style="margin-top:12px;color:var(--TX2)">找到 ${hits.length} 個站名</div>`;
+  box.innerHTML = head + hits.map((s, i) => {
     const extra = s.ambiguous && s.addr ? escHtml(String(s.addr).slice(0, 16)) : '';
     const dist = s.meters != null ? `${s.meters} 公尺` : '';
     const meta = [extra, dist].filter(Boolean).join(' · ');
