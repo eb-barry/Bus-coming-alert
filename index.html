@@ -192,7 +192,29 @@ body{
 .od-fields .od-row:first-child{margin-top:0;}
 .set-stop{display:flex;align-items:center;gap:8px;margin-top:8px;}
 .set-stop span{flex:1;font-weight:800;min-width:0;}
-#namePick{z-index:260;}
+#namePick{z-index:260;align-items:flex-start;padding:0;}
+#namePick .modal{
+  width:100%;max-width:480px;height:100dvh;max-height:100dvh;margin:0 auto;
+  border-radius:0;display:flex;flex-direction:column;
+}
+#namePick .mhd{border-radius:0;flex-shrink:0;}
+#namePick .mbody{flex:1;min-height:0;overflow-y:auto;}
+.catalog-ov{
+  display:none;position:fixed;inset:0;z-index:280;
+  background:rgba(10,16,32,0.55);align-items:center;justify-content:center;padding:18px;
+}
+.catalog-ov.show{display:flex;}
+.catalog-card{
+  width:100%;max-width:420px;background:#fff;border-radius:16px;padding:22px 18px;
+  box-shadow:0 8px 40px rgba(0,0,0,0.28);
+}
+.catalog-title{font-size:1.25rem;font-weight:800;color:var(--P);}
+.catalog-msg{margin:10px 0 16px;line-height:1.65;color:var(--TX);font-weight:700;}
+.catalog-bar{height:14px;background:#e8eef8;border-radius:999px;overflow:hidden;}
+.catalog-bar > div{height:100%;width:0;background:var(--P);border-radius:999px;transition:width .25s linear;}
+.catalog-meta{margin-top:10px;font-weight:800;color:var(--TX2);min-height:1.4em;}
+.pick-row{display:flex;gap:8px;align-items:center;}
+.pick-row .st-search{flex:1;}
 .fav-stop:disabled{opacity:0.45;}
 .od-k{font-weight:800;color:var(--P);text-align:center;}
 .od-row button{
@@ -651,6 +673,16 @@ input:focus,select:focus{border-color:var(--P);}
 
 <div class="toast-c" id="toastC"></div>
 
+<div id="catalogOverlay" class="catalog-ov">
+  <div class="catalog-card">
+    <div class="catalog-title" id="catalogTitle">正在下載站牌資料</div>
+    <p class="catalog-msg" id="catalogMsg"></p>
+    <div class="catalog-bar" aria-hidden="true"><div id="catalogBar"></div></div>
+    <div class="catalog-meta" id="catalogMeta">準備中</div>
+    <button type="button" class="btn btn-P" id="catalogRetry" style="display:none;margin-top:16px" onclick="retryStopCatalog()">再試一次</button>
+  </div>
+</div>
+
 <div class="mbd" id="namePick">
   <div class="modal">
     <div class="mhd">
@@ -658,7 +690,11 @@ input:focus,select:focus{border-color:var(--P);}
       <button type="button" class="mclose" onclick="closeNamePick()">✕</button>
     </div>
     <div class="mbody">
-      <input id="stopQ" class="st-search" type="text" placeholder="站名" autocomplete="off" enterkeyhint="search" oninput="renderStationHits()" style="width:100%">
+      <div class="pick-row">
+        <input id="stopQ" class="st-search" type="text" placeholder="站名" autocomplete="off" enterkeyhint="search"
+          oninput="renderStationHits()" onkeyup="renderStationHits()" oncompositionend="renderStationHits()">
+        <button type="button" class="btn-sm" onclick="runStopSearch()">搜尋</button>
+      </div>
       <div id="stopHits"></div>
     </div>
   </div>
@@ -705,7 +741,7 @@ input:focus,select:focus{border-color:var(--P);}
             <div id="cacheStatus">快取狀態：計算中…</div>
             <div id="cacheDate" style="margin-top:2px;font-size:0.75rem"></div>
           </div>
-          <button class="btn-sm" onclick="clearStopCache()">🔄 更新站牌</button>
+          <button class="btn-sm" id="catalogBtn" onclick="refreshStopCatalog()">下載</button>
         </div>
       </div>
 
@@ -1048,6 +1084,7 @@ function saveKeys() {
   lsSet('tdx_id',id); lsSet('tdx_sec',sc);
   S.token=null; S.tokenExp=0;
   toast('✅ API 金鑰已儲存'); closeModal('settingsModal');
+  if (S.mode === 'stop' && !catalogInfo()) beginStopPage();
 }
 function setFont(size, silent) {
   document.documentElement.dataset.font=(size==='normal')?'':size;
@@ -1058,31 +1095,37 @@ function setFont(size, silent) {
 function ls(k){ return localStorage.getItem(k); }
 function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 function cGet(k){ try{ const x=JSON.parse(ls(k)); if(x&&Date.now()-x.t<x.ttl) return x.d; }catch(e){} return null; }
-function cSet(k,d,ttl){ try{ lsSet(k,JSON.stringify({d,t:Date.now(),ttl})); }catch(e){} }
+function cSet(k,d,ttl){
+  try { localStorage.setItem(k, JSON.stringify({d,t:Date.now(),ttl})); return true; }
+  catch (e) { return false; }
+}
 
-function clearStopCache() {
-  let count=0;
-  for (let i=localStorage.length-1;i>=0;i--) {
-    const k=localStorage.key(i);
-    if (k&&k.startsWith('stops_')) { localStorage.removeItem(k); count++; }
+function purgeBulkCaches() {
+  const drop = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k) continue;
+    if (k.startsWith('stops_') || k.startsWith('sor_') || k.startsWith('sorn_') || k.startsWith('stations_')) drop.push(k);
   }
-  toast(`✅ 已清除 ${count} 條路線的站牌快取`);
-  updateCacheStatus();
+  drop.forEach(k => localStorage.removeItem(k));
+}
+
+function catalogInfo() {
+  try {
+    const x = JSON.parse(ls('stop_catalog') || 'null');
+    if (!x || !Array.isArray(x.d) || !x.d.length) return null;
+    return { count: x.d.length, t: x.t, fresh: Date.now() - x.t < (x.ttl || 0) };
+  } catch (e) { return null; }
 }
 
 function updateCacheStatus() {
-  let count=0, oldest=Date.now();
-  for (let i=0;i<localStorage.length;i++) {
-    const k=localStorage.key(i);
-    if (k&&k.startsWith('stops_')) {
-      count++;
-      try{ const x=JSON.parse(localStorage.getItem(k)); if(x.t<oldest) oldest=x.t; }catch(e){}
-    }
-  }
-  document.getElementById('cacheStatus').textContent=
-    count>0?`已快取 ${count} 條路線站牌資料`:'尚無快取資料';
-  document.getElementById('cacheDate').textContent=
-    count>0?`最舊快取：${new Date(oldest).toLocaleDateString('zh-TW')}`:'';
+  const info = catalogInfo();
+  const status = document.getElementById('cacheStatus');
+  const date = document.getElementById('cacheDate');
+  const btn = document.getElementById('catalogBtn');
+  if (status) status.textContent = info ? `已存 ${info.count} 個站名` : '尚未下載站名';
+  if (date) date.textContent = info ? new Date(info.t).toLocaleDateString('zh-TW') : '';
+  if (btn) btn.textContent = info ? '更新' : '下載';
 }
 
 /* ══════════════════════════════════════════
@@ -1252,7 +1295,7 @@ async function getToken() {
   return S.token;
 }
 
-async function apiFetch(path) {
+async function apiFetch(path, onProgress) {
   const tok=await getToken();
   const sep=path.includes('?')?'&':'?';
   const url=TDX_BASE+path+(path.includes('$format')?'':sep+'$format=JSON');
@@ -1261,8 +1304,27 @@ async function apiFetch(path) {
   if (r.status===401) { S.token=null; throw new Error('憑證過期，請重新操作'); }
   if (r.status===404) return [];   // No data found — treat as empty array, not error
   if (!r.ok) throw new Error(`API 錯誤 ${r.status}`);
-  const json=await r.json();
+  const json = await readJsonBody(r, onProgress);
   return Array.isArray(json)?json:(json?.value||json||[]);
+}
+async function readJsonBody(r, onProgress) {
+  if (!onProgress || !r.body || !r.body.getReader) return r.json();
+  const total = Number(r.headers.get('Content-Length')) || 0;
+  const reader = r.body.getReader();
+  const chunks = [];
+  let received = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    onProgress(received, total);
+  }
+  const buf = new Uint8Array(received);
+  let off = 0;
+  for (const c of chunks) { buf.set(c, off); off += c.byteLength; }
+  if (!received) return [];
+  return JSON.parse(new TextDecoder().decode(buf));
 }
 
 /* ══════════════════════════════════════════
@@ -3001,12 +3063,101 @@ function setMode(mode) {
   if (stop) stop.style.display = mode === 'stop' ? '' : 'none';
   document.getElementById('tabRoute')?.classList.toggle('on', mode === 'route');
   document.getElementById('tabStop')?.classList.toggle('on', mode === 'stop');
-  if (mode === 'route' && S.buses.length) startMonitor();
+  if (mode === 'route') {
+    if (S.buses.length) startMonitor();
+    if (_catalogState !== 'loading') hideCatalogOverlay();
+  }
   if (mode === 'stop') {
     S.awaitOriginGps = S.lat == null;
     renderStopHome();
-    fillOriginFromGps();
+    beginStopPage();
   }
+}
+
+function catalogDownloadMsg(force) {
+  return force
+    ? '正在更新台北市與新北市的站牌資料。資料較多，請稍候，不要關閉這個畫面。'
+    : '第一次使用站牌功能，要先下載台北市與新北市的站牌資料。資料較多，請稍候，不要關閉這個畫面。';
+}
+function reportCatalog(patch) {
+  S.catalogUi = Object.assign(S.catalogUi || {}, patch);
+  const ui = S.catalogUi;
+  const title = document.getElementById('catalogTitle');
+  const msg = document.getElementById('catalogMsg');
+  const meta = document.getElementById('catalogMeta');
+  const bar = document.getElementById('catalogBar');
+  if (title && ui.title) title.textContent = ui.title;
+  if (msg && ui.msg) msg.textContent = ui.msg;
+  if (meta && ui.meta != null) meta.textContent = ui.meta;
+  if (bar && ui.pct != null) bar.style.width = Math.max(0, Math.min(100, ui.pct)) + '%';
+}
+function showCatalogOverlay(patch) {
+  reportCatalog(patch);
+  const retry = document.getElementById('catalogRetry');
+  if (retry) retry.style.display = 'none';
+  document.getElementById('catalogOverlay')?.classList.add('show');
+}
+function hideCatalogOverlay() {
+  document.getElementById('catalogOverlay')?.classList.remove('show');
+}
+function showCatalogError(message) {
+  reportCatalog({
+    title: '站牌下載未完成',
+    msg: '下載中斷了。請按再試一次，畫面會繼續顯示進度。',
+    meta: message || '請稍後再試',
+    pct: 0,
+  });
+  const retry = document.getElementById('catalogRetry');
+  if (retry) retry.style.display = '';
+  document.getElementById('catalogOverlay')?.classList.add('show');
+}
+function catalogHasData() {
+  return !!(S.stationBook && S.stationBook.length) || !!catalogInfo();
+}
+function beginStopPage() {
+  if (!ls('tdx_id') || !ls('tdx_sec')) {
+    hideCatalogOverlay();
+    openSettings();
+    toast('請先儲存 API 金鑰');
+    return;
+  }
+  if (catalogHasData() && _catalogState !== 'loading') {
+    hideCatalogOverlay();
+    fillOriginFromGps();
+    return;
+  }
+  showCatalogOverlay({
+    title: '正在下載站牌資料',
+    msg: catalogDownloadMsg(false),
+    meta: '準備中',
+    pct: 2,
+  });
+  ensureStations(false).then(() => {
+    hideCatalogOverlay();
+    updateCacheStatus();
+    if (S.mode === 'stop') fillOriginFromGps();
+    renderStationHits();
+  }).catch(e => {
+    if (S.mode === 'stop' || document.getElementById('catalogOverlay')?.classList.contains('show')) {
+      showCatalogError(e.message);
+    }
+  });
+}
+function retryStopCatalog() {
+  S.stationBook = null;
+  showCatalogOverlay({
+    title: '正在下載站牌資料',
+    msg: catalogDownloadMsg(false),
+    meta: '準備中',
+    pct: 2,
+  });
+  ensureStations(true).then(() => {
+    hideCatalogOverlay();
+    updateCacheStatus();
+    if (S.mode === 'stop') fillOriginFromGps();
+    renderStationHits();
+    toast('站名已存到本機');
+  }).catch(e => showCatalogError(e.message));
 }
 
 function renderStopHome() {
@@ -3073,61 +3224,209 @@ function clearFavName(i) {
   renderStopHome();
 }
 
+let _catalogState = 'idle';
+let _catalogError = '';
+
 function openNamePick(target) {
   S.namePick = target;
   document.getElementById('namePick')?.classList.add('open');
   const input = document.getElementById('stopQ');
   if (input) input.value = '';
+  fitNamePick();
+  renderStationHits();
   ensureStations()
     .then(() => { renderStationHits(); input?.focus(); })
-    .catch(e => toast('❌ ' + e.message));
+    .catch(() => renderStationHits());
 }
 function closeNamePick() {
   S.namePick = null;
   document.getElementById('namePick')?.classList.remove('open');
 }
+function fitNamePick() {
+  const el = document.querySelector('#namePick .modal');
+  const vv = window.visualViewport;
+  if (!el) return;
+  if (!vv) { el.style.height = ''; el.style.marginTop = ''; return; }
+  el.style.height = Math.max(240, Math.round(vv.height)) + 'px';
+  el.style.marginTop = Math.round(vv.offsetTop) + 'px';
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitNamePick);
+  window.visualViewport.addEventListener('scroll', fitNamePick);
+}
+
+function runStopSearch() {
+  renderStationHits();
+  return ensureStations().then(() => { renderStationHits(); return S.stationBook; }).catch(e => { renderStationHits(); throw e; });
+}
+function refreshStopCatalog() {
+  if (!ls('tdx_id') || !ls('tdx_sec')) { openSettings(); toast('請先儲存 API 金鑰'); return; }
+  showCatalogOverlay({
+    title: '正在下載站牌資料',
+    msg: catalogDownloadMsg(true),
+    meta: '準備中',
+    pct: 2,
+  });
+  ensureStations(true).then(() => {
+    hideCatalogOverlay();
+    toast(S.catalogSaved === false ? '站名已下載，但本機空間不足' : '站名已存到本機');
+    updateCacheStatus();
+    renderStationHits();
+  }).catch(e => showCatalogError(e.message));
+}
+
+function zhName(v) {
+  if (!v) return '';
+  if (typeof v === 'string') return v.trim();
+  return String(v.Zh_tw || v.Zh_TW || '').trim();
+}
+function waitSlot(onWait) {
+  return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    const tick = () => {
+      if (canCall()) resolve();
+      else if (Date.now() - t0 > 65000) reject(new Error('API 呼叫頻率限制中，請稍後再試'));
+      else { if (onWait) onWait(); setTimeout(tick, 500); }
+    };
+    tick();
+  });
+}
+function bytePct(received, total, from, to) {
+  const span = to - from;
+  const inner = total > 0
+    ? Math.min(1, received / total)
+    : Math.min(0.92, received / (received + 2000000));
+  return from + span * inner;
+}
+function persistCatalog(book) {
+  if (cSet('stop_catalog', book, STOP_TTL)) return true;
+  purgeBulkCaches();
+  if (cSet('stop_catalog', book, STOP_TTL)) return true;
+  const lean = book.map(s => ({ name: s.name, lat: s.lat, lon: s.lon, addr: '' }));
+  return cSet('stop_catalog', lean, STOP_TTL);
+}
+function migrateOldStations() {
+  const taipei = cGet('stations_Taipei') || [];
+  const ntp = cGet('stations_NewTaipei') || [];
+  const rows = [...taipei, ...ntp].map(s => ({
+    name: s.name || zhName(s.StationName),
+    lat: s.lat ?? s.StationPosition?.PositionLat ?? null,
+    lon: s.lon ?? s.StationPosition?.PositionLon ?? null,
+    addr: s.addr || s.StationAddress || '',
+  })).filter(s => s.name);
+  if (!rows.length) return null;
+  const book = slimCatalog(rows);
+  if (!book.length) return null;
+  persistCatalog(book);
+  return book;
+}
 
 let _stationLoad = null;
-function ensureStations() {
-  if (S.stationBook) return Promise.resolve(S.stationBook);
-  if (_stationLoad) return _stationLoad;
-  _stationLoad = loadStations().finally(() => { _stationLoad = null; });
-  return _stationLoad;
+function ensureStations(force) {
+  if (!force && S.stationBook && S.stationBook.length) return Promise.resolve(S.stationBook);
+  if (_stationLoad && !force) return _stationLoad;
+  _catalogState = 'loading';
+  _catalogError = '';
+  const job = loadStopCatalog(!!force).then(book => {
+    _catalogState = 'ready';
+    updateCacheStatus();
+    return book;
+  }).catch(e => {
+    _catalogState = 'error';
+    _catalogError = e.message || '站名下載失敗';
+    throw e;
+  }).finally(() => { if (_stationLoad === job) _stationLoad = null; });
+  _stationLoad = job;
+  return job;
 }
-function normalizeStations(raw, city) {
-  return (raw || []).map(s => ({
-    id: String(s.StationID || '').trim(),
-    name: (s.StationName?.Zh_tw || '').trim(),
-    city,
+
+async function fetchCityStopNames(city, onBytes) {
+  const hold = () => reportCatalog({ meta: '稍候繼續下載，請不要關閉' });
+  await waitSlot(hold);
+  markCall();
+  let raw = null;
+  try {
+    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$select=Stops&$format=JSON`, onBytes));
+  } catch (e) {
+    if (!String(e.message).includes('400')) throw e;
+  }
+  const named = (raw || []).some(r => (r.Stops || []).some(s => zhName(s.StopName)));
+  if (!named) {
+    await waitSlot(hold);
+    markCall();
+    raw = tdxArr(await apiFetch(`/v2/Bus/StopOfRoute/City/${city}?$format=JSON`, onBytes));
+  }
+  const rows = [];
+  for (const route of raw || []) {
+    for (const s of route.Stops || []) {
+      const name = zhName(s.StopName);
+      if (!name) continue;
+      rows.push({
+        name,
+        lat: s.StopPosition?.PositionLat ?? null,
+        lon: s.StopPosition?.PositionLon ?? null,
+        addr: '',
+      });
+    }
+  }
+  if (rows.length) return rows;
+  await waitSlot(hold);
+  markCall();
+  const stations = tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`, onBytes));
+  return stations.map(s => ({
+    name: zhName(s.StationName),
     lat: s.StationPosition?.PositionLat ?? null,
     lon: s.StationPosition?.PositionLon ?? null,
     addr: s.StationAddress || '',
-  })).filter(s => s.id && s.name);
+  })).filter(s => s.name);
 }
-async function fetchStationCity(city) {
-  if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
-  markCall();
-  try {
-    return tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$select=StationID,StationName,StationAddress,StationPosition&$format=JSON`));
-  } catch (e) {
-    if (!String(e.message).includes('400')) throw e;
-    if (!canCall()) throw new Error('API 呼叫頻率限制中，請稍後再試');
-    markCall();
-    return tdxArr(await apiFetch(`/v2/Bus/Station/City/${city}?$format=JSON`));
-  }
-}
-async function loadStations() {
-  const book = [];
-  for (const city of ['Taipei', 'NewTaipei']) {
-    let rows = cGet('stations_' + city);
-    if (!rows) {
-      rows = normalizeStations(await fetchStationCity(city), city);
-      if (rows.length) cSet('stations_' + city, rows, STOP_TTL);
+async function loadStopCatalog(force) {
+  if (!force) {
+    const cached = cGet('stop_catalog');
+    if (Array.isArray(cached) && cached.length) {
+      S.stationBook = cached;
+      S.catalogSaved = true;
+      return cached;
     }
-    book.push(...rows);
+    const migrated = migrateOldStations();
+    if (migrated) {
+      S.stationBook = migrated;
+      S.catalogSaved = true;
+      return migrated;
+    }
   }
+  if (!ls('tdx_id') || !ls('tdx_sec')) throw new Error('請先儲存 API 金鑰');
+  const plan = [
+    ['Taipei', '台北市', 4, 48],
+    ['NewTaipei', '新北市', 48, 92],
+  ];
+  const rows = [];
+  for (const [city, label, from, to] of plan) {
+    reportCatalog({ meta: `正在下載${label}`, pct: from });
+    rows.push(...await fetchCityStopNames(city, (received, total) => {
+      const mb = (received / 1048576).toFixed(1);
+      const meta = total > 0
+        ? `正在下載${label}　${mb} / ${(total / 1048576).toFixed(1)} MB`
+        : `正在下載${label}　已下載 ${mb} MB`;
+      reportCatalog({ meta, pct: bytePct(received, total, from, to) });
+    }));
+  }
+  reportCatalog({ meta: '正在整理站名並存入手機', pct: 94 });
+  await new Promise(r => setTimeout(r, 40));
+  const book = slimCatalog(rows);
+  if (!book.length) throw new Error('沒有取得站名');
+  S.catalogSaved = persistCatalog(book);
   S.stationBook = book;
+  reportCatalog({ meta: `已存入這支手機　${book.length} 個站名`, pct: 100 });
   return book;
+}
+function slimCatalog(rows) {
+  return stationClusters(rows).map(c => ({
+    name: c.name,
+    lat: c.lat == null ? null : Math.round(c.lat * 1e5) / 1e5,
+    lon: c.lon == null ? null : Math.round(c.lon * 1e5) / 1e5,
+    addr: String(c.addr || '').slice(0, 24),
+  }));
 }
 
 function stationClusters(book) {
@@ -3179,7 +3478,15 @@ function searchStations(q) {
     hits.push({ c, i, start: i === 0 ? 0 : 1 });
   }
   hits.sort((a, b) => a.start - b.start || a.i - b.i || a.c.name.length - b.c.name.length);
-  return hits.slice(0, 30).map(h => mark(h.c));
+  const seen = new Set();
+  const out = [];
+  for (const h of hits) {
+    if (seen.has(h.c.name)) continue;
+    seen.add(h.c.name);
+    out.push(mark(h.c));
+    if (out.length >= 30) break;
+  }
+  return out;
 }
 
 function nearestStopName() {
@@ -3209,14 +3516,20 @@ function renderStationHits() {
   const input = document.getElementById('stopQ');
   if (!box) return;
   const q = input ? input.value : '';
-  const hits = searchStations(q);
-  S.stationHits = hits;
-  if (!S.stationBook) { box.innerHTML = ''; return; }
-  if (!hits.length) {
-    box.innerHTML = `<div class="meta" style="margin-top:12px;color:var(--TX2)">${q.trim() ? '沒有符合的站牌' : '輸入站名'}</div>`;
+  if (!S.stationBook || !S.stationBook.length) {
+    S.stationHits = [];
+    const msg = _catalogState === 'loading' ? '站名下載中' : (_catalogError || '尚未下載站名');
+    box.innerHTML = `<div class="meta" style="margin-top:12px;color:var(--TX2)">${msg}</div>`;
     return;
   }
-  box.innerHTML = hits.map((s, i) => {
+  const hits = searchStations(q);
+  S.stationHits = hits;
+  if (!hits.length) {
+    box.innerHTML = `<div class="meta" style="margin-top:12px;color:var(--TX2)">${q.trim() ? '沒有符合的站名' : '輸入站名'}</div>`;
+    return;
+  }
+  const head = `<div class="meta" style="margin-top:12px;color:var(--TX2)">找到 ${hits.length} 個站名</div>`;
+  box.innerHTML = head + hits.map((s, i) => {
     const extra = s.ambiguous && s.addr ? escHtml(String(s.addr).slice(0, 16)) : '';
     const dist = s.meters != null ? `${s.meters} 公尺` : '';
     const meta = [extra, dist].filter(Boolean).join(' · ');
