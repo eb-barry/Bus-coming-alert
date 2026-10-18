@@ -272,8 +272,8 @@ body{
 .leg-dir{color:#1a73e8;font-weight:700;font-size:0.95rem;line-height:1.1;}
 .leg-away{margin-left:auto;color:#e53935;font-weight:800;font-size:1.45rem;line-height:1;flex-shrink:0;}
 .leg-sub{
-  display:flex;align-items:center;min-height:0;overflow:hidden;
-  color:var(--TX2);font-size:0.78rem;font-weight:700;
+  display:block;min-height:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  color:var(--TX2);font-size:0.78rem;font-weight:700;line-height:26px;
 }
 .leg-mute{
   width:34px;height:34px;border:none;border-radius:50%;background:#fff;color:#c1121f;
@@ -3871,19 +3871,38 @@ async function decorateLegs(legs) {
     const rows = tdxArr(await apiFetch(realtimePathFor(city, buses)));
     byKey[city] = { rows, ids: new Set(buses.map(busIdentity)) };
     for (const leg of list) {
-      const on = rows.filter(r =>
-        (r.RouteName?.Zh_tw || '').trim() === leg.name && r.Direction === leg.dir && r.BusStatus <= 2
-      );
+      const mine = rows.filter(r => rowMatchesLeg(r, leg));
+      const approaching = mine.filter(r => Number(r.BusStatus) <= 2);
       let best = null, minD = Infinity;
-      for (const b of on) {
-        const diff = leg.fromSeq - b.StopSequence;
+      for (const b of approaching) {
+        const diff = leg.fromSeq - Number(b.StopSequence);
         if (diff >= 0 && diff < minD) { minD = diff; best = b; }
       }
-      leg.away = best ? minD : null;
-      leg.curStop = best ? ((best.StopName?.Zh_tw) || '') : '';
-      leg.curSeq = best ? best.StopSequence : null;
-      // EstimateTime 是到這筆資料所在站的秒數，只有公車就在起站才拿來當到站時間。
-      leg.etaSec = (best && minD === 0 && Number(best.EstimateTime) > 0) ? Number(best.EstimateTime) : null;
+      if (best) {
+        leg.away = minD;
+        leg.curStop = ((best.StopName?.Zh_tw) || '').trim();
+        leg.curSeq = best.StopSequence;
+        // EstimateTime 是到這筆資料所在站的秒數，只有公車就在起站才拿來當到站時間。
+        leg.etaSec = (minD === 0 && Number(best.EstimateTime) > 0) ? Number(best.EstimateTime) : null;
+        leg.prevStop = '';
+        leg.prevPast = false;
+        continue;
+      }
+      // 起站前面沒有車。同一包資料裡，剛開過起站的那台就是前一班。
+      leg.away = null;
+      leg.curStop = '';
+      leg.curSeq = null;
+      leg.etaSec = null;
+      let prev = null;
+      for (const b of mine) {
+        const st = Number(b.BusStatus);
+        if (st !== 0 && st !== 2) continue;
+        const seq = Number(b.StopSequence);
+        if (!(seq > leg.fromSeq)) continue;
+        if (!prev || seq < Number(prev.StopSequence)) prev = b;
+      }
+      leg.prevStop = prev ? ((prev.StopName?.Zh_tw) || '').trim() : '';
+      leg.prevPast = !!(prev && Number(prev.StopSequence) > leg.toSeq);
     }
   }
   if (Object.keys(byKey).length) S.freshRt = { at: Date.now(), byKey };
@@ -3898,14 +3917,26 @@ let _saidArrive = false;
 function legKey(leg) {
   return `${leg.label}|${leg.dir}|${leg.city}`;
 }
+function rowMatchesLeg(row, leg) {
+  if ((row.RouteName?.Zh_tw || '').trim() !== leg.name) return false;
+  if (row.Direction !== leg.dir) return false;
+  const sub = (row.SubRouteName?.Zh_tw || '').trim();
+  if (sub && leg.label && sub !== leg.label) return false;
+  return true;
+}
 function legAwayText(leg) {
   if (leg.away == null) return '';
   if (leg.away === 0) return '到站';
-  return leg.away + '站';
+  return leg.away + ' 站';
 }
 function legStatus(leg) {
   const where = leg.curStop ? escHtml(leg.curStop) : '';
-  if (leg.away == null) return '尚未發車';
+  if (leg.away == null) {
+    if (!leg.prevStop) return '尚未發車';
+    const stop = escHtml(leg.prevStop);
+    if (leg.prevPast) return `尚未發車 · 前班已過訖站，現在在${stop}`;
+    return `尚未發車 · 前班在${stop}`;
+  }
   if (leg.away === 0 && leg.etaSec) {
     const phrase = leg.etaSec < 60 ? '1 分鐘內到起站' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘到起站`;
     return where ? phrase + ' · ' + where : phrase;
