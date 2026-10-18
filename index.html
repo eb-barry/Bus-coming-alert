@@ -185,7 +185,7 @@ body{
   width:52px;border-radius:var(--Rs);border:2px solid var(--BD);background:#fff;
   font-family:inherit;font-weight:800;color:var(--P);cursor:pointer;touch-action:manipulation;
 }
-.fav-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:10px;}
+.fav-grid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-auto-rows:96px;gap:8px;margin-top:10px;}
 .fav-stop{
   position:relative;min-height:72px;border-radius:var(--Rs);border:2px solid var(--BD);
   background:#fff;font-family:inherit;font-weight:800;font-size:0.92rem;color:var(--TX);
@@ -243,33 +243,43 @@ body{
 .home-card .ht{font-size:1.2rem;font-weight:800;}
 .home-card .hs{display:block;margin-top:2px;color:var(--TX2);font-size:0.82rem;font-weight:700;}
 .preset{
-  min-height:92px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;
-  position:relative;text-align:left;
+  height:96px;min-height:96px;max-height:96px;padding:8px 8px 6px;
+  display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  position:relative;text-align:left;overflow:hidden;
 }
-.preset .nm{font-weight:800;font-size:0.92rem;line-height:1.25;padding-right:12px;}
-.preset .chev,.home-card .chev,.od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
-.preset .chev{position:absolute;right:8px;top:50%;transform:translateY(-50%);margin:0;}
-.preset .nm{overflow-wrap:anywhere;}
-.preset.empty{background:#f7f9fc;box-shadow:none;border:1.5px dashed #d5deea;min-height:92px;}
+.preset .nm{
+  flex:1;width:100%;max-width:100%;min-width:0;min-height:0;max-height:46px;
+  font-weight:800;font-size:15px;line-height:1.15;
+  overflow:hidden;white-space:normal;word-break:break-all;
+}
+.home-card .chev,.od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
+.preset.empty{background:#f7f9fc;box-shadow:none;border:1.5px dashed #d5deea;}
 .ico{
   width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
 }
 .ico svg{display:block;}
 .od-btn{display:flex;align-items:center;gap:8px;padding:12px;text-align:left;font-weight:800;}
 .leg{
-  width:100%;display:flex;align-items:center;gap:10px;text-align:left;
-  margin-top:8px;padding:12px;border-radius:16px;border:none;background:#fff;
+  width:100%;display:grid;grid-template-rows:2fr 1fr;height:78px;
+  margin-top:8px;padding:4px 12px;border-radius:16px;border:none;background:#fff;
   box-shadow:0 4px 16px rgba(26,86,160,0.08);font-family:inherit;cursor:pointer;
+  text-align:left;overflow:hidden;
 }
 .leg.on{outline:2px solid #1a73e8;}
-.leg.tp{background:#e8f2ff;}
-.leg.ntp{background:#e7f7ee;}
-.leg .nm{font-weight:800;}
-.leg.tp .nm{color:#1a73e8;}
-.leg.ntp .nm{color:#1b8a4a;}
-.leg .meta{color:var(--TX2);font-size:0.8rem;font-weight:700;margin-top:2px;}
-.leg-chev{color:#b0bac8;font-size:1.2rem;line-height:1;pointer-events:none;}
-.leg-star{color:#c5ceda;font-size:1.15rem;pointer-events:none;}
+.leg-top{display:flex;align-items:center;gap:6px;min-height:0;min-width:0;}
+.leg-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;}
+.leg-name{color:#1a73e8;font-weight:800;font-size:1.35rem;line-height:1.05;}
+.leg-dir{color:#1a73e8;font-weight:700;font-size:0.95rem;line-height:1.1;}
+.leg-away{margin-left:auto;color:#e53935;font-weight:800;font-size:1.45rem;line-height:1;flex-shrink:0;}
+.leg-sub{
+  display:flex;align-items:center;min-height:0;overflow:hidden;
+  color:var(--TX2);font-size:0.78rem;font-weight:700;
+}
+.leg-mute{
+  width:34px;height:34px;border:none;border-radius:50%;background:#fff;color:#c1121f;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;
+  box-shadow:0 1px 4px rgba(0,0,0,0.16);cursor:pointer;
+}
 .icon-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
 .icon-grid button{
   border:2px solid var(--BD);background:#fff;border-radius:12px;padding:8px 2px;
@@ -3370,10 +3380,11 @@ function renderStopHome() {
       ? `<button type="button" class="home-card" onclick="tapHome()">${iconBadge(home.icon || 'home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">${escHtml(home.name)}</span></span><span class="chev">›</span></button>`
       : `<button type="button" class="home-card" disabled>${iconBadge('home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">到設定裡選擇站名</span></span></button>`;
     const grid = favs.map((f, i) => f.name
-      ? `<button type="button" class="preset" onclick="tapFav(${i})">${iconBadge(f.icon || 'pin')}<span class="nm">${escHtml(f.name)}</span><span class="chev">›</span></button>`
+      ? `<button type="button" class="preset" onclick="tapFav(${i})">${iconBadge(f.icon || 'pin', 32)}<span class="nm">${escHtml(f.name)}</span></button>`
       : `<button type="button" class="preset empty" disabled></button>`
     ).join('');
     box.innerHTML = homeCard + `<div class="fav-grid">${grid}</div>`;
+    requestAnimationFrame(fitPresetNames);
   }
   const fromBtn = document.getElementById('odFrom');
   const toBtn = document.getElementById('odTo');
@@ -3386,6 +3397,19 @@ function renderStopHome() {
   const q = document.getElementById('stopQueryBtn');
   if (q) q.disabled = !(S.originName && S.destName);
 }
+
+function fitPresetNames() {
+  document.querySelectorAll('#stopHome .preset:not(.empty) .nm').forEach(el => {
+    let size = 15;
+    el.style.fontSize = size + 'px';
+    if (!el.clientHeight) return;
+    while (el.scrollHeight > el.clientHeight + 1 && size > 9) {
+      size -= 0.5;
+      el.style.fontSize = size + 'px';
+    }
+  });
+}
+window.addEventListener('resize', fitPresetNames);
 
 function clearStopResults() {
   S.stopLegs = null;
@@ -3874,15 +3898,20 @@ let _saidArrive = false;
 function legKey(leg) {
   return `${leg.label}|${leg.dir}|${leg.city}`;
 }
+function legAwayText(leg) {
+  if (leg.away == null) return '';
+  if (leg.away === 0) return '到站';
+  return leg.away + '站';
+}
 function legStatus(leg) {
-  const where = leg.curStop ? ' · ' + escHtml(leg.curStop) : '';
+  const where = leg.curStop ? escHtml(leg.curStop) : '';
   if (leg.away == null) return '尚未發車';
   if (leg.away === 0 && leg.etaSec) {
-    const phrase = leg.etaSec < 60 ? '1 分鐘內' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘`;
-    return phrase + '到起站' + where;
+    const phrase = leg.etaSec < 60 ? '1 分鐘內到起站' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘到起站`;
+    return where ? phrase + ' · ' + where : phrase;
   }
-  if (leg.away === 0) return '已到起站' + where;
-  return `還有 ${leg.away} 站` + where;
+  if (leg.away === 0) return where ? '已到起站 · ' + where : '已到起站';
+  return where;
 }
 function noteVoice() {
   const leg = (S.stopLegs || []).find(l => legKey(l) === S.voiceLegKey);
@@ -3976,12 +4005,6 @@ async function queryStops() {
   }
 }
 
-function cityTone(city) {
-  return city === 'NewTaipei' ? '#1b8a4a' : '#1a73e8';
-}
-function busBadge(color) {
-  return `<span class="ico" style="background:${color}"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M4 3h16a2 2 0 0 1 2 2v8H2V5a2 2 0 0 1 2-2z"/><rect x="5.2" y="5.3" width="5.2" height="3.2" rx=".4" fill="#14365f"/><rect x="13.6" y="5.3" width="5.2" height="3.2" rx=".4" fill="#14365f"/><circle cx="7" cy="16.4" r="1.7" fill="#fff"/><circle cx="17" cy="16.4" r="1.7" fill="#fff"/></svg></span>`;
-}
 function renderStopLegs() {
   const box = document.getElementById('stopLegs');
   if (!box) return;
@@ -3991,18 +4014,30 @@ function renderStopLegs() {
     return;
   }
   box.innerHTML = legs.map((leg, i) => {
-    const tone = leg.city === 'NewTaipei' ? 'ntp' : 'tp';
-    const on = legKey(leg) === S.voiceLegKey ? ' on' : '';
-    return `<button type="button" class="leg ${tone}${on}" onclick="monitorLeg(${i})">
-      ${busBadge(cityTone(leg.city))}
-      <div style="flex:1;min-width:0">
-        <div class="nm">${escHtml(leg.label)}　往 ${escHtml(leg.head || leg.toName)}</div>
-        <div class="meta">${legStatus(leg)}</div>
+    const on = legKey(leg) === S.voiceLegKey;
+    const dir = leg.head || leg.toName;
+    const away = legAwayText(leg);
+    const mute = on
+      ? `<button type="button" class="leg-mute" onclick="event.stopPropagation(); muteStopVoice()" aria-label="停止語音播報"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4z"/><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/></svg></button>`
+      : '';
+    return `<div class="leg${on ? ' on' : ''}" onclick="monitorLeg(${i})">
+      <div class="leg-top">
+        <div class="leg-title"><span class="leg-name">${escHtml(leg.label)}</span>${dir ? `<span class="leg-dir">往 ${escHtml(dir)}</span>` : ''}</div>
+        ${away ? `<span class="leg-away">${escHtml(away)}</span>` : ''}
+        ${mute}
       </div>
-      <span class="leg-chev" aria-hidden="true">›</span>
-      <span class="leg-star" aria-hidden="true">☆</span>
-    </button>`;
+      <div class="leg-sub">${legStatus(leg)}</div>
+    </div>`;
   }).join('');
+}
+function muteStopVoice() {
+  S.voiceLegKey = null;
+  _saidSeq = null;
+  _saidArrive = false;
+  window.speechSynthesis?.cancel();
+  _sQueue.length = 0;
+  _sRunning = false;
+  renderStopLegs();
 }
 
 function legToBus(leg) {
