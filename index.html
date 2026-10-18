@@ -243,17 +243,18 @@ body{
 .home-card .ht{font-size:1.2rem;font-weight:800;}
 .home-card .hs{display:block;margin-top:2px;color:var(--TX2);font-size:0.82rem;font-weight:700;}
 .preset{
-  height:96px;min-height:96px;max-height:96px;padding:8px 8px 6px;
-  display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  height:96px;min-height:96px;max-height:96px;padding:8px;
+  display:flex;align-items:center;justify-content:flex-start;
   position:relative;text-align:left;overflow:hidden;
+  background:#d7ebff;
 }
 .preset .nm{
-  flex:1;width:100%;max-width:100%;min-width:0;min-height:0;max-height:46px;
-  font-weight:800;font-size:15px;line-height:1.15;
+  width:100%;max-width:100%;min-width:0;max-height:80px;
+  font-weight:800;font-size:1.35rem;line-height:1.15;color:#1a73e8;
   overflow:hidden;white-space:normal;word-break:break-all;
 }
 .home-card .chev,.od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
-.preset.empty{background:#f7f9fc;box-shadow:none;border:1.5px dashed #d5deea;}
+.preset.empty{background:#eaf4ff;box-shadow:none;border:1.5px dashed #b9d4f2;}
 .ico{
   width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
 }
@@ -261,7 +262,7 @@ body{
 .od-btn{display:flex;align-items:center;gap:8px;padding:12px;text-align:left;font-weight:800;}
 .leg{
   width:100%;display:grid;grid-template-rows:2fr 1fr;height:78px;
-  margin-top:8px;padding:4px 12px;border-radius:16px;border:none;background:#fff;
+  margin-top:8px;padding:4px 12px;border-radius:16px;border:none;background:#e5f6ea;
   box-shadow:0 4px 16px rgba(26,86,160,0.08);font-family:inherit;cursor:pointer;
   text-align:left;overflow:hidden;
 }
@@ -3380,7 +3381,7 @@ function renderStopHome() {
       ? `<button type="button" class="home-card" onclick="tapHome()">${iconBadge(home.icon || 'home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">${escHtml(home.name)}</span></span><span class="chev">›</span></button>`
       : `<button type="button" class="home-card" disabled>${iconBadge('home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">到設定裡選擇站名</span></span></button>`;
     const grid = favs.map((f, i) => f.name
-      ? `<button type="button" class="preset" onclick="tapFav(${i})">${iconBadge(f.icon || 'pin', 32)}<span class="nm">${escHtml(f.name)}</span></button>`
+      ? `<button type="button" class="preset" onclick="tapFav(${i})"><span class="nm">${escHtml(f.name)}</span></button>`
       : `<button type="button" class="preset empty" disabled></button>`
     ).join('');
     box.innerHTML = homeCard + `<div class="fav-grid">${grid}</div>`;
@@ -3400,10 +3401,11 @@ function renderStopHome() {
 
 function fitPresetNames() {
   document.querySelectorAll('#stopHome .preset:not(.empty) .nm').forEach(el => {
-    let size = 15;
+    const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 17;
+    let size = Math.round(root * 1.35 * 10) / 10;
     el.style.fontSize = size + 'px';
     if (!el.clientHeight) return;
-    while (el.scrollHeight > el.clientHeight + 1 && size > 9) {
+    while (el.scrollHeight > el.clientHeight + 1 && size > 14) {
       size -= 0.5;
       el.style.fontSize = size + 'px';
     }

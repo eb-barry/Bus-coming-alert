@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v15';  // previous bus stop while not departed
+const CACHE = 'bus-alert-v16';  // preset cards without icons, tinted backgrounds
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',
