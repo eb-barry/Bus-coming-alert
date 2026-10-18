@@ -40,22 +40,31 @@ body{
 
 /* ── Header ── */
 .hdr{
-  background:var(--P);color:#fff;padding:10px 14px;
-  display:flex;align-items:center;justify-content:space-between;
-  position:sticky;top:0;z-index:100;box-shadow:0 3px 14px rgba(0,0,0,0.22);
+  position:sticky;top:0;z-index:100;
+  background:#7ecbff;line-height:0;
+  box-shadow:0 3px 14px rgba(0,0,0,0.12);
 }
-.hdr-left h1{font-size:1.3rem;font-weight:700;letter-spacing:1px;display:flex;align-items:center;gap:6px;}
-.hdr-left .sub{font-size:0.68rem;opacity:0.78;margin-top:1px;}
-.hdr-right{display:flex;align-items:center;gap:8px;}
-/* GPS indicator in header */
+.hdr-art{width:100%;height:auto;display:block;}
+.hdr-gps{
+  position:absolute;top:10px;left:10px;line-height:1.2;
+  background:rgba(12,92,58,0.88);color:#fff;
+}
+.hdr-gear{
+  position:absolute;top:10px;right:10px;
+  width:44px;height:44px;border-radius:50%;border:none;
+  background:rgba(255,255,255,0.94);color:#1a56a0;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;touch-action:manipulation;
+  box-shadow:0 2px 8px rgba(0,0,0,0.18);
+}
+.hdr-gear:active{transform:scale(0.96);}
 .gps-pill{
   display:flex;align-items:center;gap:5px;
-  background:rgba(255,255,255,0.15);border-radius:999px;
-  padding:4px 10px;font-size:0.7rem;cursor:default;
+  border-radius:999px;padding:4px 10px;font-size:0.72rem;font-weight:800;cursor:default;
 }
 .gps-dot{width:8px;height:8px;border-radius:50%;background:#aaa;flex-shrink:0;}
-.gps-dot.ok{background:#52b788;animation:blink 1.5s infinite;}
-.gps-dot.err{background:#f4a261;}
+.gps-dot.ok{background:#b9f6ca;animation:blink 1.5s infinite;}
+.gps-dot.err{background:#ffe082;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.3;}}
 .icon-btn{
   background:rgba(255,255,255,0.16);border:1.5px solid rgba(255,255,255,0.35);
@@ -151,14 +160,19 @@ body{
 .cmp-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
 .cmp-note{font-size:0.75rem;color:var(--TX2);margin-top:6px;line-height:1.5;}
 
-.mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:10px 12px 0;}
+.mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px 8px;}
 .mode-tab{
-  border:none;border-radius:var(--Rs);padding:12px 8px;
+  position:relative;border:none;border-radius:16px;min-height:52px;padding:10px 8px;
   font-family:inherit;font-size:1.05rem;font-weight:800;
-  background:#fff;color:var(--TX2);box-shadow:var(--SH);
+  background:#fff;color:#5c6b82;box-shadow:0 4px 14px rgba(26,86,160,0.08);
   cursor:pointer;touch-action:manipulation;
+  display:flex;align-items:center;justify-content:center;gap:6px;
 }
-.mode-tab.on{background:var(--P);color:#fff;}
+.mode-tab.on{background:#1a73e8;color:#fff;}
+.mode-tab.on::after{
+  content:"";position:absolute;left:50%;bottom:-7px;transform:translateX(-50%);
+  border:8px solid transparent;border-top-color:#1a73e8;border-bottom:0;
+}
 .home-wrap{display:flex;gap:8px;align-items:stretch;}
 .home-btn{
   width:100%;padding:16px 12px;border-radius:var(--Rs);
@@ -188,7 +202,7 @@ body{
 .od-query{
   width:4.6rem;padding:8px 0;letter-spacing:0;align-self:stretch;flex-shrink:0;
 }
-.od-row{display:grid;grid-template-columns:1.6rem 1fr;gap:8px;align-items:center;margin-top:8px;}
+.od-row{margin-top:8px;}
 .od-fields .od-row:first-child{margin-top:0;}
 .set-stop{display:flex;align-items:center;gap:8px;margin-top:8px;}
 .set-stop span{flex:1;font-weight:800;min-width:0;}
@@ -216,6 +230,61 @@ body{
 .pick-row{display:flex;gap:8px;align-items:center;}
 .pick-row .st-search{flex:1;}
 .fav-stop:disabled{opacity:0.45;}
+.home-card,.preset,.od-row button.od-btn{
+  width:100%;border:none;background:#fff;border-radius:16px;
+  box-shadow:0 4px 16px rgba(26,86,160,0.08);
+  font-family:inherit;color:var(--TX);cursor:pointer;touch-action:manipulation;
+}
+.home-card{
+  display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left;
+  background:linear-gradient(180deg,#f7fbff,#e7f3ff);
+}
+.home-card:disabled{opacity:0.55;cursor:default;}
+.home-card .ht{font-size:1.2rem;font-weight:800;}
+.home-card .hs{display:block;margin-top:2px;color:var(--TX2);font-size:0.82rem;font-weight:700;}
+.preset{
+  min-height:92px;padding:10px 8px 8px;display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  position:relative;text-align:left;
+}
+.preset .nm{font-weight:800;font-size:0.92rem;line-height:1.25;padding-right:12px;}
+.preset .chev,.home-card .chev,.od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
+.preset .chev{position:absolute;right:8px;top:50%;transform:translateY(-50%);margin:0;}
+.preset .nm{overflow-wrap:anywhere;}
+.preset.empty{background:#f7f9fc;box-shadow:none;border:1.5px dashed #d5deea;min-height:92px;}
+.ico{
+  width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.ico svg{display:block;}
+.od-btn{display:flex;align-items:center;gap:8px;padding:12px;text-align:left;font-weight:800;}
+.leg{
+  width:100%;display:flex;align-items:center;gap:10px;text-align:left;
+  margin-top:8px;padding:12px;border-radius:16px;border:none;background:#fff;
+  box-shadow:0 4px 16px rgba(26,86,160,0.08);font-family:inherit;cursor:pointer;
+}
+.leg.on{outline:2px solid #1a73e8;}
+.leg.tp{background:#e8f2ff;}
+.leg.ntp{background:#e7f7ee;}
+.leg .nm{font-weight:800;}
+.leg.tp .nm{color:#1a73e8;}
+.leg.ntp .nm{color:#1b8a4a;}
+.leg .meta{color:var(--TX2);font-size:0.8rem;font-weight:700;margin-top:2px;}
+.leg-chev{color:#b0bac8;font-size:1.2rem;line-height:1;pointer-events:none;}
+.leg-star{color:#c5ceda;font-size:1.15rem;pointer-events:none;}
+.icon-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;}
+.icon-grid button{
+  border:2px solid var(--BD);background:#fff;border-radius:12px;padding:8px 2px;
+  font-family:inherit;font-size:0.68rem;font-weight:800;cursor:pointer;color:var(--TX);
+  display:flex;flex-direction:column;align-items:center;gap:4px;line-height:1.15;min-height:72px;
+}
+.od-btn.sel .od-name{color:var(--P);}
+.icon-grid button.on{border-color:#1a73e8;background:var(--INF-BG);}
+#iconPick{z-index:270;}
+.pin{width:28px;height:28px;border-radius:50%;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:0.75rem;flex-shrink:0;}
+.pin-g{background:#2eae6b;}
+.pin-r{background:#e53935;}
+.od-name{flex:1;min-width:0;}
+.ico-btn{border:none;background:transparent;padding:0;cursor:pointer;flex-shrink:0;}
+.od-query{flex-direction:column;gap:2px;border-radius:16px;}
 .od-k{font-weight:800;color:var(--P);text-align:center;}
 .od-row button{
   text-align:left;padding:12px;border-radius:var(--Rs);
@@ -483,18 +552,16 @@ input:focus,select:focus{border-color:var(--P);}
 
 <!-- Header -->
 <header class="hdr">
-  <div class="hdr-left">
-    <h1>🚌 公車快到了</h1>
-    <div class="sub">雙北公車及公路客運 即時到站提醒</div>
+  <img class="hdr-art" src="./header-banner.png" alt="公車快到了，雙北公車及公路客運即時到站提醒">
+  <div class="gps-pill hdr-gps" id="gpsPill">
+    <div class="gps-dot" id="gpsDot"></div>
+    <span id="gpsLbl">定位中</span>
   </div>
-  <div class="hdr-right">
-    <div class="gps-pill" id="gpsPill">
-      <div class="gps-dot" id="gpsDot"></div>
-      <span id="gpsLbl">定位中</span>
-    </div>
-    <button class="icon-btn" onclick="openSettings()">⚙️</button>
-    <button class="icon-btn" onclick="openFavs()">⭐</button>
-  </div>
+  <button type="button" class="hdr-gear" onclick="openSettings()" aria-label="設定">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <path fill="currentColor" d="M19.4 13a7.8 7.8 0 0 0 .1-1 7.8 7.8 0 0 0-.1-1l2-1.6a.5.5 0 0 0 .1-.6l-1.9-3.3a.5.5 0 0 0-.6-.2l-2.4 1a7.4 7.4 0 0 0-1.7-1l-.4-2.5a.5.5 0 0 0-.5-.4h-3.8a.5.5 0 0 0-.5.4L9.3 4.6a7.4 7.4 0 0 0-1.7 1l-2.4-1a.5.5 0 0 0-.6.2L2.7 8.1a.5.5 0 0 0 .1.6L4.8 10.3a7.8 7.8 0 0 0 0 2L2.8 13.9a.5.5 0 0 0-.1.6l1.9 3.3a.5.5 0 0 0 .6.2l2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5a.5.5 0 0 0 .5.4h3.8a.5.5 0 0 0 .5-.4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1a.5.5 0 0 0 .6-.2l1.9-3.3a.5.5 0 0 0-.1-.6L19.4 13zM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5z"/>
+    </svg>
+  </button>
 </header>
 
 <!-- Notification permission banner -->
@@ -504,8 +571,22 @@ input:focus,select:focus{border-color:var(--P);}
 </div>
 
 <div class="mode-tabs">
-  <button type="button" class="mode-tab on" id="tabRoute" onclick="setMode('route')">路線</button>
-  <button type="button" class="mode-tab" id="tabStop" onclick="setMode('stop')">站牌</button>
+  <button type="button" class="mode-tab on" id="tabRoute" onclick="setMode('route')">
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="5" cy="7" r="2.4" fill="currentColor"/>
+      <circle cx="19" cy="17" r="2.4" fill="currentColor"/>
+      <path d="M7.2 8.4C11 14 13 10 16.8 15.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    </svg>
+    路線
+  </button>
+  <button type="button" class="mode-tab" id="tabStop" onclick="setMode('stop')">
+    <svg width="26" height="22" viewBox="0 0 28 22" aria-hidden="true">
+      <path fill="currentColor" fill-rule="evenodd" d="M1 5h26v8H1V5zm3 2h6v3H4zm9 0h6v3h-6z"/>
+      <circle cx="7" cy="17" r="2.4" fill="currentColor"/>
+      <circle cx="21" cy="17" r="2.4" fill="currentColor"/>
+    </svg>
+    站牌
+  </button>
 </div>
 
 <div id="routeMode">
@@ -591,20 +672,18 @@ input:focus,select:focus{border-color:var(--P);}
 </div>
 
 <div id="stopMode" style="display:none">
-  <div class="sec">
-    <div class="sec-bd" id="stopHome">
-      <button type="button" class="home-btn" id="homeBtn" onclick="tapHome()">回家</button>
-      <div class="fav-grid" id="favGrid"></div>
-      <div class="od-block">
-        <div class="od-fields">
-          <div class="od-row"><span class="od-k">起</span><button type="button" id="odFrom" onclick="openNamePick('origin')">選擇</button></div>
-          <div class="od-row"><span class="od-k">訖</span><button type="button" id="odTo" onclick="openNamePick('dest')">選擇</button></div>
-        </div>
-        <button type="button" class="btn btn-P od-query" id="stopQueryBtn" onclick="queryStops()" disabled>查詢</button>
-      </div>
-      <div id="stopLegs"></div>
+  <div id="stopHome" style="padding:8px 14px 0"></div>
+  <div class="od-block" style="padding:0 14px">
+    <div class="od-fields">
+      <div class="od-row"><button type="button" class="od-btn" id="odFrom" onclick="openNamePick('origin')"><span class="pin pin-g">起</span><span class="od-name">選擇</span><span class="chev">›</span></button></div>
+      <div class="od-row"><button type="button" class="od-btn" id="odTo" onclick="openNamePick('dest')"><span class="pin pin-r">訖</span><span class="od-name">選擇</span><span class="chev">›</span></button></div>
     </div>
+    <button type="button" class="btn btn-P od-query" id="stopQueryBtn" onclick="queryStops()" disabled>
+      <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zM10 14a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+      查詢
+    </button>
   </div>
+  <div id="stopLegs" style="padding:4px 14px 12px"></div>
 </div>
 
 <!-- Monitor section -->
@@ -683,6 +762,16 @@ input:focus,select:focus{border-color:var(--P);}
   </div>
 </div>
 
+<div class="mbd" id="iconPick">
+  <div class="modal">
+    <div class="mhd">
+      <h2>圖示</h2>
+      <button type="button" class="mclose" onclick="closeIconPick()">✕</button>
+    </div>
+    <div class="mbody"><div id="iconGrid" class="icon-grid"></div></div>
+  </div>
+</div>
+
 <div class="mbd" id="namePick">
   <div class="modal">
     <div class="mhd">
@@ -750,14 +839,19 @@ input:focus,select:focus{border-color:var(--P);}
       <div class="form-row">
         <label>🏠 回家站</label>
         <div class="set-stop">
+          <button type="button" class="ico-btn" id="setHomeIcon" onclick="openIconPick('home')" aria-label="回家站圖示"></button>
           <span id="setHomeName">未設定</span>
-          <button type="button" class="btn-sm" onclick="openNamePick('home')">選擇</button>
+          <button type="button" class="btn-sm" onclick="openNamePick('home')">站名</button>
           <button type="button" class="btn-sm" onclick="clearHomeName()">清除</button>
         </div>
       </div>
       <div class="form-row">
         <label>⭐ 預設站牌</label>
         <div id="setFavList"></div>
+      </div>
+      <div class="form-row">
+        <label>🚌 常用路線</label>
+        <button type="button" class="btn-sm" onclick="openFavs()">查看</button>
       </div>
 
       <div class="divider"></div>
@@ -955,6 +1049,10 @@ const S = {
   stationBook:null,
   homeName:'',
   favNames:[],
+  home:{name:'', icon:'home'},
+  favs:[],
+  voiceLegKey:null,
+  stopPoll:null,
   originName:'',
   destName:'',
   awaitOriginGps:false,
@@ -1005,6 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (document.hidden) return;
     navigator.serviceWorker?.getRegistration().then(reg => reg?.update()).catch(() => {});
     if (S.monitoring) fetchAll();
+    if (S.mode === 'stop' && S.stopLegs && S.stopLegs.length) refreshStopLegs();
   });
   window.addEventListener('beforeunload', stopMonitor);
   document.querySelectorAll('.mbd').forEach(bd =>
@@ -3027,35 +3126,136 @@ function checkPWA(){
 }
 
 /* ══════════════════════════════════════════
-   STOP MODE — names in localStorage, query by stop name
+   STOP MODE — names and icons in localStorage
 ══════════════════════════════════════════ */
-function loadStopPrefs() {
-  let home = ls('stop_home_name');
-  if (home == null) {
-    try {
-      const old = JSON.parse(ls('home_stop') || 'null');
-      if (old && old.name) home = old.name;
-    } catch (e) {}
+const STOP_ICONS = [
+  ['park','公園','#2eae6b','<path fill="#fff" d="M12 2 6.5 11h3L6 17h12l-3.5-6h3z"/><rect x="10.6" y="17" width="2.8" height="5" rx="1" fill="#fff"/>'],
+  ['school','學校','#f4a261','<path fill="#fff" d="M12 3 22 8 12 13 2 8z"/><path fill="#fff" d="M6 10.2V16c1.8 1.5 4 2.2 6 2.2s4.2-.7 6-2.2v-5.8"/>'],
+  ['hospital','醫院','#e53935','<path fill="#fff" d="M10 2h4v8h8v4h-8v8h-4v-8H2v-4h8z"/>'],
+  ['mrt','捷運','#1a73e8','<path fill="#fff" d="M3 20V4h4l5 7 5-7h4v16h-4V11l-5 6-5-6v9z"/>'],
+  ['train','火車站','#455a64','<rect x="3" y="5" width="18" height="11" rx="2" fill="#fff"/><rect x="5" y="7" width="6" height="4" fill="#263238"/><rect x="13" y="7" width="6" height="4" fill="#263238"/><circle cx="7" cy="19" r="1.7" fill="#fff"/><circle cx="17" cy="19" r="1.7" fill="#fff"/>'],
+  ['terminal','公車總站','#1a56a0','<rect x="3" y="5" width="18" height="11" rx="2" fill="#fff"/><rect x="5" y="7" width="6" height="4" rx="1" fill="#0e3a6e"/><rect x="13" y="7" width="6" height="4" rx="1" fill="#0e3a6e"/><circle cx="7" cy="19" r="1.7" fill="#fff"/><circle cx="17" cy="19" r="1.7" fill="#fff"/>'],
+  ['mall','百貨','#8e24aa','<path fill="#fff" d="M6 8h12l1 13H5z"/><path fill="none" stroke="#fff" stroke-width="2" d="M9 8V6.5a3 3 0 0 1 6 0V8"/>'],
+  ['market','市場','#ef6c00','<path fill="#fff" d="M2 6h20v3l-3.3 2.2L15.3 9 12 11.2 8.7 9 5.3 11.2 2 9z"/><rect x="6" y="13" width="12" height="7" fill="#fff"/>'],
+  ['night','夜市','#d81b60','<rect x="9" y="2" width="6" height="2" rx="1" fill="#fff"/><path fill="#fff" d="M8 5h8l-1 12H9z"/><rect x="11" y="17" width="2" height="4" fill="#fff"/>'],
+  ['temple','廟宇','#c62828','<path fill="#fff" d="M2 10 12 4l10 6-1.6 2L12 7.2 3.6 12z"/><rect x="7" y="12" width="10" height="8" fill="#fff"/><rect x="11" y="15" width="2" height="5" fill="#7f1d1d"/>'],
+  ['church','教堂','#6d4c41','<path fill="#fff" d="M11 2h2v4h4v2h-4v4h-2V8H7V6h4z"/><path fill="#fff" d="M5 14l7 4 7-4v7H5z"/>'],
+  ['library','圖書館','#5e35b1','<path fill="#fff" d="M3 5h8c1.4 0 2 .8 2 2v12H6.5C5 19 3 18.2 3 16.5z"/><path fill="#fff" d="M21 5h-8v14h5.5c1.5 0 2.5-.8 2.5-2.5z"/>'],
+  ['museum','博物館','#00897b','<path fill="#fff" d="M2 10 12 4l10 6z"/><rect x="5" y="11" width="2.2" height="7" fill="#fff"/><rect x="10.9" y="11" width="2.2" height="7" fill="#fff"/><rect x="16.8" y="11" width="2.2" height="7" fill="#fff"/><rect x="3" y="18" width="18" height="2.2" fill="#fff"/>'],
+  ['stadium','體育場','#43a047','<ellipse cx="12" cy="13" rx="9" ry="5" fill="none" stroke="#fff" stroke-width="2"/><ellipse cx="12" cy="13" rx="4" ry="2.2" fill="#fff"/>'],
+  ['university','大學','#1565c0','<path fill="#fff" d="M12 3 22 8 12 13 2 8z"/><path fill="#fff" d="M6 10v5c1.8 1.6 4 2.3 6 2.3s4.2-.7 6-2.3v-5"/><path fill="#fff" d="M20 8.2V16"/>'],
+  ['gov','政府機關','#37474f','<path fill="#fff" d="M12 2a4 4 0 0 1 4 4H8a4 4 0 0 1 4-4z"/><rect x="3" y="7" width="18" height="2" fill="#fff"/><rect x="5" y="10" width="2.2" height="6" fill="#fff"/><rect x="10.9" y="10" width="2.2" height="6" fill="#fff"/><rect x="16.8" y="10" width="2.2" height="6" fill="#fff"/><rect x="3" y="16.5" width="18" height="2.2" fill="#fff"/>'],
+  ['office','辦公大樓','#546e7a','<rect x="6" y="2" width="12" height="20" rx="1" fill="#fff"/><rect x="8" y="4" width="2.4" height="2.4" fill="#37474f"/><rect x="13.2" y="4" width="2.4" height="2.4" fill="#37474f"/><rect x="8" y="8.5" width="2.4" height="2.4" fill="#37474f"/><rect x="13.2" y="8.5" width="2.4" height="2.4" fill="#37474f"/><rect x="8" y="13" width="2.4" height="2.4" fill="#37474f"/><rect x="13.2" y="13" width="2.4" height="2.4" fill="#37474f"/><rect x="10.4" y="17" width="3.2" height="5" fill="#37474f"/>'],
+  ['homebldg','住宅','#78909c','<rect x="3" y="6" width="18" height="15" fill="#fff"/><rect x="5" y="8" width="3" height="3" fill="#546e7a"/><rect x="10.5" y="8" width="3" height="3" fill="#546e7a"/><rect x="16" y="8" width="3" height="3" fill="#546e7a"/><rect x="5" y="13" width="3" height="3" fill="#546e7a"/><rect x="10.5" y="13" width="3" height="3" fill="#546e7a"/><rect x="16" y="13" width="3" height="3" fill="#546e7a"/>'],
+  ['bridge','橋','#8d6e63','<path fill="none" stroke="#fff" stroke-width="2" d="M2 15c3.2-6 5.2-6 8.2 0S15.4 21 18.4 15 21 9 22 15"/><path stroke="#fff" stroke-width="2" d="M2 16h20"/>'],
+  ['river','河濱','#039be5','<path fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" d="M2 7c2.2 2 4.2 2 6.4 0S12.6 5 14.8 7s4.2 2 6.4 0"/><path fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" d="M2 13c2.2 2 4.2 2 6.4 0s4.2-2 6.4 0 4.2 2 6.4 0"/><path fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" d="M2 19c2.2 2 4.2 2 6.4 0s4.2-2 6.4 0 4.2 2 6.4 0"/>'],
+  ['mountain','山','#689f38','<path fill="#fff" d="M1 20 8 8l3.2 4.5L14 6l9 14z"/>'],
+  ['hotspring','溫泉','#00897b','<ellipse cx="12" cy="16" rx="6" ry="4" fill="#fff"/><path fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" d="M8 11c.7-2 .7-2 0-4M12 10c.7-2 .7-2 0-4M16 11c.7-2 .7-2 0-4"/>'],
+  ['beach','海邊','#f9a825','<circle cx="17" cy="6" r="3" fill="#fff"/><path fill="#fff" d="M2 15c2.2-2.2 4.2-2.2 6.4 0s4.2 2.2 6.4 0 4.2-2.2 6.4 0v6H2z"/>'],
+  ['airport','機場','#0277bd','<path fill="#fff" d="M21 10.5 14 12 9 5l-2 .8 3.2 6.2-4.2 1.2L4 11l-1.6.8 2.2 3.8L21 12z"/>'],
+  ['zoo','動物園','#ef6c00','<circle cx="7" cy="8" r="2.1" fill="#fff"/><circle cx="12" cy="5.5" r="2.1" fill="#fff"/><circle cx="17" cy="8" r="2.1" fill="#fff"/><ellipse cx="12" cy="15" rx="5" ry="4" fill="#fff"/>'],
+  ['post','郵局','#e53935','<rect x="3" y="6" width="18" height="12" rx="1" fill="#fff"/><path fill="none" stroke="#ffcdd2" stroke-width="1.6" d="M3 7.2 12 14l9-6.8"/>'],
+  ['bank','銀行','#2e7d32','<path fill="#fff" d="M2 9 12 3l10 6z"/><rect x="4.5" y="10" width="2.3" height="7" fill="#fff"/><rect x="10.85" y="10" width="2.3" height="7" fill="#fff"/><rect x="17.2" y="10" width="2.3" height="7" fill="#fff"/><rect x="3" y="17.2" width="18" height="2.2" fill="#fff"/>'],
+  ['food','餐廳','#e65100','<path fill="#fff" d="M3 9h18c-.7 6-4 9-9 9s-8.3-3-9-9z"/><path fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" d="M8 7c.4-2 2.2-2.6 3.2-.6"/>'],
+  ['cross','十字路口','#546e7a','<path fill="#fff" d="M9 1h6v8h8v6h-8v8H9v-8H1V9h8z"/>'],
+  ['home','家','#1a73e8','<path fill="#fff" d="M2 11 12 3l10 8v10H2z"/><rect x="10" y="14" width="4" height="7" fill="#1a73e8"/>'],
+  ['pin','','#90a4ae','<path fill="#fff" d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5z"/>'],
+];
+const ICON_MAP = Object.fromEntries(STOP_ICONS.map(([id, name, bg, g]) => [id, { id, name, bg, g }]));
+
+function iconBadge(id, size) {
+  const spec = ICON_MAP[id] || ICON_MAP.pin;
+  const s = size || 36;
+  const g = Math.round(s * 0.62);
+  return `<span class="ico" style="width:${s}px;height:${s}px;background:${spec.bg}"><svg width="${g}" height="${g}" viewBox="0 0 24 24" aria-hidden="true">${spec.g}</svg></span>`;
+}
+function knownIcon(id, fallback) {
+  return ICON_MAP[id] && id !== 'pin' ? id : (fallback || '');
+}
+function blankFav() { return { name: '', icon: '' }; }
+function normSlot(raw) {
+  if (!raw) return blankFav();
+  if (typeof raw === 'string') return { name: raw.trim(), icon: '' };
+  return { name: String(raw.name || '').trim(), icon: knownIcon(raw.icon, '') };
+}
+
+let _iconTarget = null;
+function openIconPick(target) {
+  const slot = target === 'home' ? S.home : S.favs[target];
+  if (!slot || !slot.name) { toast('請先選站名'); return; }
+  _iconTarget = target;
+  const current = slot.icon;
+  const grid = document.getElementById('iconGrid');
+  if (grid) {
+    grid.innerHTML = STOP_ICONS.filter(ic => ic[0] !== 'pin').map(([id, name]) =>
+      `<button type="button" class="${id === current ? 'on' : ''}" onclick="chooseIcon('${id}')">${iconBadge(id, 32)}<span>${name}</span></button>`
+    ).join('');
   }
-  S.homeName = (home || '').trim();
+  document.getElementById('iconPick')?.classList.add('open');
+}
+function closeIconPick() {
+  _iconTarget = null;
+  document.getElementById('iconPick')?.classList.remove('open');
+}
+function chooseIcon(id) {
+  if (!ICON_MAP[id] || id === 'pin') return;
+  if (_iconTarget === 'home') S.home.icon = id;
+  else if (typeof _iconTarget === 'number' && S.favs[_iconTarget]) S.favs[_iconTarget].icon = id;
+  else return;
+  saveStopPrefs();
+  renderSetStops();
+  renderStopHome();
+  closeIconPick();
+}
+
+function loadStopPrefs() {
+  let home = null;
+  const hadHome = ls('stop_home') != null;
+  try { home = JSON.parse(ls('stop_home') || 'null'); } catch (e) {}
+  if (!home || typeof home !== 'object' || Array.isArray(home)) {
+    let name = ls('stop_home_name');
+    if (name == null) {
+      try {
+        const old = JSON.parse(ls('home_stop') || 'null');
+        if (old && old.name) name = old.name;
+      } catch (e) {}
+    }
+    home = { name: name || '', icon: 'home' };
+  }
+  S.home = {
+    name: String(home.name || '').trim(),
+    icon: knownIcon(home.icon, 'home') || 'home',
+  };
   let favs = null;
-  try { favs = JSON.parse(ls('stop_fav_names') || 'null'); } catch (e) {}
+  const hadFavs = ls('stop_favs') != null;
+  try { favs = JSON.parse(ls('stop_favs') || 'null'); } catch (e) {}
+  if (!Array.isArray(favs)) {
+    try { favs = JSON.parse(ls('stop_fav_names') || 'null'); } catch (e) {}
+  }
   if (!Array.isArray(favs)) {
     try {
       const old = JSON.parse(ls('fav_stops') || '[]');
       favs = Array.isArray(old) ? old.map(x => (x && x.name) ? x.name : '') : [];
     } catch (e) { favs = []; }
   }
-  S.favNames = Array.from({ length: 9 }, (_, i) => String(favs[i] || '').trim());
+  S.favs = Array.from({ length: 9 }, (_, i) => normSlot(favs[i]));
+  S.homeName = S.home.name;
+  S.favNames = S.favs.map(f => f.name);
+  if (!hadHome || !hadFavs) saveStopPrefs();
 }
 function saveStopPrefs() {
-  lsSet('stop_home_name', S.homeName || '');
+  S.homeName = S.home.name;
+  S.favNames = S.favs.map(f => f.name);
+  lsSet('stop_home', JSON.stringify({ name: S.home.name, icon: S.home.icon || 'home' }));
+  lsSet('stop_favs', JSON.stringify(S.favs.map(f => ({ name: f.name, icon: f.icon || '' }))));
+  lsSet('stop_home_name', S.home.name || '');
   lsSet('stop_fav_names', JSON.stringify(S.favNames));
 }
 
 function setMode(mode) {
   if (S.mode === mode) return;
   if (S.monitoring) stopMonitor();
+  if (mode !== 'stop' && S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   S.mode = mode;
   const route = document.getElementById('routeMode');
   const stop = document.getElementById('stopMode');
@@ -3071,6 +3271,7 @@ function setMode(mode) {
     S.awaitOriginGps = S.lat == null;
     renderStopHome();
     beginStopPage();
+    if (S.stopLegs && S.stopLegs.length) scheduleStopPoll();
   }
 }
 
@@ -3161,64 +3362,77 @@ function retryStopCatalog() {
 }
 
 function renderStopHome() {
-  const homeBtn = document.getElementById('homeBtn');
-  if (homeBtn) {
-    homeBtn.textContent = S.homeName ? '回家　' + S.homeName : '回家';
-    homeBtn.disabled = !S.homeName;
-  }
-  const grid = document.getElementById('favGrid');
-  if (grid) {
-    grid.innerHTML = S.favNames.map((name, i) => name
-      ? `<button type="button" class="fav-stop" onclick="tapFav(${i})">${escHtml(name)}</button>`
-      : `<button type="button" class="fav-stop empty" disabled></button>`
+  const box = document.getElementById('stopHome');
+  const home = S.home || { name: '', icon: 'home' };
+  const favs = (S.favs && S.favs.length === 9) ? S.favs : Array.from({ length: 9 }, (_, i) => (S.favs && S.favs[i]) || blankFav());
+  if (box) {
+    const homeCard = home.name
+      ? `<button type="button" class="home-card" onclick="tapHome()">${iconBadge(home.icon || 'home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">${escHtml(home.name)}</span></span><span class="chev">›</span></button>`
+      : `<button type="button" class="home-card" disabled>${iconBadge('home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">到設定裡選擇站名</span></span></button>`;
+    const grid = favs.map((f, i) => f.name
+      ? `<button type="button" class="preset" onclick="tapFav(${i})">${iconBadge(f.icon || 'pin')}<span class="nm">${escHtml(f.name)}</span><span class="chev">›</span></button>`
+      : `<button type="button" class="preset empty" disabled></button>`
     ).join('');
+    box.innerHTML = homeCard + `<div class="fav-grid">${grid}</div>`;
   }
-  const from = document.getElementById('odFrom');
-  const to = document.getElementById('odTo');
+  const fromBtn = document.getElementById('odFrom');
+  const toBtn = document.getElementById('odTo');
+  const from = fromBtn?.querySelector('.od-name');
+  const to = toBtn?.querySelector('.od-name');
   if (from) from.textContent = S.originName || '選擇';
   if (to) to.textContent = S.destName || '選擇';
+  fromBtn?.classList.toggle('sel', !!S.originName);
+  toBtn?.classList.toggle('sel', !!S.destName);
   const q = document.getElementById('stopQueryBtn');
   if (q) q.disabled = !(S.originName && S.destName);
 }
 
-function tapHome() {
-  if (!S.homeName) return;
-  S.destName = S.homeName;
+function clearStopResults() {
   S.stopLegs = null;
-  renderStopHome();
+  S.voiceLegKey = null;
+  _saidSeq = null;
+  _saidArrive = false;
+  if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   const box = document.getElementById('stopLegs');
   if (box) box.innerHTML = '';
 }
+function tapHome() {
+  if (!S.home || !S.home.name) return;
+  S.destName = S.home.name;
+  clearStopResults();
+  renderStopHome();
+}
 function tapFav(i) {
-  const name = S.favNames[i];
+  const name = S.favs[i] && S.favs[i].name;
   if (!name) return;
   S.destName = name;
-  S.stopLegs = null;
+  clearStopResults();
   renderStopHome();
-  const box = document.getElementById('stopLegs');
-  if (box) box.innerHTML = '';
 }
 
 function renderSetStops() {
   const h = document.getElementById('setHomeName');
-  if (h) h.textContent = S.homeName || '未設定';
+  if (h) h.textContent = (S.home && S.home.name) || '未設定';
+  const hi = document.getElementById('setHomeIcon');
+  if (hi) hi.innerHTML = iconBadge((S.home && S.home.icon) || 'home', 36);
   const box = document.getElementById('setFavList');
   if (!box) return;
-  box.innerHTML = S.favNames.map((name, i) => `
+  box.innerHTML = (S.favs || []).map((f, i) => `
     <div class="set-stop">
-      <span>${name ? escHtml(name) : '未設定'}</span>
-      <button type="button" class="btn-sm" onclick="openNamePick(${i})">選擇</button>
+      <button type="button" class="ico-btn" onclick="openIconPick(${i})" aria-label="圖示">${iconBadge(f.icon || 'pin', 36)}</button>
+      <span>${f.name ? escHtml(f.name) : '未設定'}</span>
+      <button type="button" class="btn-sm" onclick="openNamePick(${i})">站名</button>
       <button type="button" class="btn-sm" onclick="clearFavName(${i})">清除</button>
     </div>`).join('');
 }
 function clearHomeName() {
-  S.homeName = '';
+  S.home = { name: '', icon: 'home' };
   saveStopPrefs();
   renderSetStops();
   renderStopHome();
 }
 function clearFavName(i) {
-  S.favNames[i] = '';
+  S.favs[i] = blankFav();
   saveStopPrefs();
   renderSetStops();
   renderStopHome();
@@ -3546,11 +3760,12 @@ function chooseCluster(i) {
   const c = S.stationHits[i];
   if (!c) return;
   if (S.namePick === 'home') {
-    S.homeName = c.name;
+    S.home.name = c.name;
+    if (!S.home.icon) S.home.icon = 'home';
     saveStopPrefs();
     renderSetStops();
-  } else if (typeof S.namePick === 'number') {
-    S.favNames[S.namePick] = c.name;
+  } else if (typeof S.namePick === 'number' && S.favs[S.namePick]) {
+    S.favs[S.namePick].name = c.name;
     saveStopPrefs();
     renderSetStops();
   } else if (S.namePick === 'origin') {
@@ -3559,9 +3774,7 @@ function chooseCluster(i) {
   } else if (S.namePick === 'dest') {
     S.destName = c.name;
   }
-  S.stopLegs = null;
-  const box = document.getElementById('stopLegs');
-  if (box) box.innerHTML = '';
+  clearStopResults();
   closeNamePick();
   renderStopHome();
 }
@@ -3627,7 +3840,8 @@ async function decorateLegs(legs) {
   }
   const byKey = {};
   for (const [city, list] of groups) {
-    if (!canCall()) { list.forEach(l => { l.away = null; l.curStop = ''; }); continue; }
+    // 額度用完就保留畫面上的站數，不要改成尚未發車。
+    if (!canCall()) continue;
     markCall();
     const buses = list.map(l => ({ tdxName: l.name, city, isIntercity: false, routeId: l.routeId, dir: l.dir }));
     const rows = tdxArr(await apiFetch(realtimePathFor(city, buses)));
@@ -3643,6 +3857,9 @@ async function decorateLegs(legs) {
       }
       leg.away = best ? minD : null;
       leg.curStop = best ? ((best.StopName?.Zh_tw) || '') : '';
+      leg.curSeq = best ? best.StopSequence : null;
+      // EstimateTime 是到這筆資料所在站的秒數，只有公車就在起站才拿來當到站時間。
+      leg.etaSec = (best && minD === 0 && Number(best.EstimateTime) > 0) ? Number(best.EstimateTime) : null;
     }
   }
   if (Object.keys(byKey).length) S.freshRt = { at: Date.now(), byKey };
@@ -3650,11 +3867,75 @@ async function decorateLegs(legs) {
 }
 
 let _stopBusy = false;
+let _stopRefresh = false;
+let _saidSeq = null;
+let _saidArrive = false;
+
+function legKey(leg) {
+  return `${leg.label}|${leg.dir}|${leg.city}`;
+}
+function legStatus(leg) {
+  const where = leg.curStop ? ' · ' + escHtml(leg.curStop) : '';
+  if (leg.away == null) return '尚未發車';
+  if (leg.away === 0 && leg.etaSec) {
+    const phrase = leg.etaSec < 60 ? '1 分鐘內' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘`;
+    return phrase + '到起站' + where;
+  }
+  if (leg.away === 0) return '已到起站' + where;
+  return `還有 ${leg.away} 站` + where;
+}
+function noteVoice() {
+  const leg = (S.stopLegs || []).find(l => legKey(l) === S.voiceLegKey);
+  if (!leg) return;
+  const bus = { userLabel: leg.label, tdxName: leg.name, isMapped: leg.label !== leg.name };
+  if (leg.away === 0) {
+    if (!_saidArrive) {
+      _saidArrive = true;
+      _saidSeq = leg.curSeq;
+      announceArrived(bus, leg.curStop || leg.fromName || '');
+    }
+    return;
+  }
+  _saidArrive = false;
+  if (leg.curSeq != null && leg.away > 0 && leg.curSeq !== _saidSeq) {
+    _saidSeq = leg.curSeq;
+    announceApproach(bus, leg.away, leg.curStop || '');
+  }
+}
+function scheduleStopPoll() {
+  if (S.stopPoll) clearTimeout(S.stopPoll);
+  S.stopPoll = null;
+  if (S.mode !== 'stop' || !S.stopLegs || !S.stopLegs.length) return;
+  const cities = new Set(S.stopLegs.map(l => l.city));
+  const ms = cities.size > 1 ? 30000 : 15000;
+  S.stopPoll = setTimeout(() => { S.stopPoll = null; refreshStopLegs(); }, ms);
+}
+async function refreshStopLegs() {
+  if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
+  if (S.mode !== 'stop' || !S.stopLegs || !S.stopLegs.length || _stopBusy || _stopRefresh) {
+    if (S.mode === 'stop' && S.stopLegs && S.stopLegs.length) scheduleStopPoll();
+    return;
+  }
+  _stopRefresh = true;
+  try {
+    await decorateLegs(S.stopLegs);
+    S.stopLegs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
+    noteVoice();
+    renderStopLegs();
+  } catch (e) {}
+  _stopRefresh = false;
+  scheduleStopPoll();
+}
+
 async function queryStops() {
   if (_stopBusy) return;
   if (!S.originName || !S.destName) return;
   if (S.originName === S.destName) { toast('起站與訖站相同'); return; }
   _stopBusy = true;
+  S.voiceLegKey = null;
+  _saidSeq = null;
+  _saidArrive = false;
+  if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   const box = document.getElementById('stopLegs');
   if (box) box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">查詢中</div>';
   const btn = document.getElementById('stopQueryBtn');
@@ -3685,6 +3966,7 @@ async function queryStops() {
     legs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
     S.stopLegs = legs;
     renderStopLegs();
+    scheduleStopPoll();
   } catch (e) {
     if (box) box.innerHTML = '';
     toast('❌ ' + e.message);
@@ -3694,6 +3976,12 @@ async function queryStops() {
   }
 }
 
+function cityTone(city) {
+  return city === 'NewTaipei' ? '#1b8a4a' : '#1a73e8';
+}
+function busBadge(color) {
+  return `<span class="ico" style="background:${color}"><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M4 3h16a2 2 0 0 1 2 2v8H2V5a2 2 0 0 1 2-2z"/><rect x="5.2" y="5.3" width="5.2" height="3.2" rx=".4" fill="#14365f"/><rect x="13.6" y="5.3" width="5.2" height="3.2" rx=".4" fill="#14365f"/><circle cx="7" cy="16.4" r="1.7" fill="#fff"/><circle cx="17" cy="16.4" r="1.7" fill="#fff"/></svg></span>`;
+}
 function renderStopLegs() {
   const box = document.getElementById('stopLegs');
   if (!box) return;
@@ -3703,13 +3991,16 @@ function renderStopLegs() {
     return;
   }
   box.innerHTML = legs.map((leg, i) => {
-    const pos = leg.away == null ? '尚未發車' : leg.away === 0 ? '已到起站' : `還有 ${leg.away} 站`;
-    const where = leg.curStop ? ' · ' + escHtml(leg.curStop) : '';
-    return `<button type="button" class="st-hit" onclick="monitorLeg(${i})">
-      <div style="flex:1">
+    const tone = leg.city === 'NewTaipei' ? 'ntp' : 'tp';
+    const on = legKey(leg) === S.voiceLegKey ? ' on' : '';
+    return `<button type="button" class="leg ${tone}${on}" onclick="monitorLeg(${i})">
+      ${busBadge(cityTone(leg.city))}
+      <div style="flex:1;min-width:0">
         <div class="nm">${escHtml(leg.label)}　往 ${escHtml(leg.head || leg.toName)}</div>
-        <div class="meta">${pos}${where}</div>
+        <div class="meta">${legStatus(leg)}</div>
       </div>
+      <span class="leg-chev" aria-hidden="true">›</span>
+      <span class="leg-star" aria-hidden="true">☆</span>
     </button>`;
   }).join('');
 }
@@ -3738,7 +4029,12 @@ function legToBus(leg) {
 function monitorLeg(i) {
   const leg = (S.stopLegs || [])[i];
   if (!leg) return;
-  monitorOnly(legToBus(leg));
+  unlockAudio();
+  S.voiceLegKey = legKey(leg);
+  _saidSeq = null;
+  _saidArrive = false;
+  noteVoice();
+  renderStopLegs();
 }
 
 </script>
