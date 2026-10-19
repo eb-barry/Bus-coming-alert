@@ -235,26 +235,57 @@ body{
   box-shadow:0 4px 16px rgba(26,86,160,0.08);
   font-family:inherit;color:var(--TX);cursor:pointer;touch-action:manipulation;
 }
-.home-card{
-  display:flex;align-items:center;gap:12px;padding:14px 16px;text-align:left;
-  background:linear-gradient(180deg,#f7fbff,#e7f3ff);
+.home-card,.preset:not(.empty){
+  position:relative;overflow:hidden;color:#0d3f3c;
+  border:1px solid rgba(255,255,255,0.72);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.08) 46%, rgba(8,90,86,0.12) 100%),
+    linear-gradient(165deg, #d5f7f4 0%, #8fe0db 54%, #67ccc6 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.95),
+    inset 0 -10px 16px rgba(10,90,86,0.16),
+    0 8px 16px rgba(16,110,104,0.2);
+  transition:transform .12s ease, box-shadow .12s ease;
 }
-.home-card:disabled{opacity:0.55;cursor:default;}
-.home-card .ht{font-size:1.2rem;font-weight:800;}
-.home-card .hs{display:block;margin-top:2px;color:var(--TX2);font-size:0.82rem;font-weight:700;}
+.home-card::before,.preset:not(.empty)::before{
+  content:"";position:absolute;left:10%;right:10%;top:5px;height:42%;
+  border-radius:40%;pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0));
+}
+.home-card:active,.preset:not(.empty):active{
+  transform:translateY(3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 5px 10px rgba(10,90,86,0.16),
+    0 2px 6px rgba(16,110,104,0.16);
+}
+.home-card{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:2px;min-height:92px;padding:16px 18px;text-align:center;
+}
+.home-card:disabled{opacity:0.62;cursor:default;}
+.home-card:disabled:active{transform:none;}
+.home-card .ht,.home-card .hs{position:relative;z-index:1;}
+.home-card .ht{font-size:1.85rem;font-weight:800;line-height:1.1;color:#0d3f3c;}
+.home-card .hs{display:block;margin-top:2px;color:#145650;font-size:1.2rem;font-weight:800;}
 .preset{
   height:96px;min-height:96px;max-height:96px;padding:8px;
-  display:flex;align-items:center;justify-content:flex-start;
-  position:relative;text-align:left;overflow:hidden;
-  background:#d7ebff;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;text-align:center;overflow:hidden;
 }
 .preset .nm{
+  position:relative;z-index:1;
   width:100%;max-width:100%;min-width:0;max-height:80px;
-  font-weight:800;font-size:1.35rem;line-height:1.15;color:#1a73e8;
-  overflow:hidden;white-space:normal;word-break:break-all;
+  font-weight:800;font-size:1.35rem;line-height:1.15;color:#0d3f3c;
+  overflow:hidden;white-space:normal;word-break:break-all;text-align:center;
 }
-.home-card .chev,.od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
-.preset.empty{background:#eaf4ff;box-shadow:none;border:1.5px dashed #b9d4f2;}
+.od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
+.preset.empty{
+  background:linear-gradient(165deg, #e7faf8, #c9efec);
+  border:1px dashed rgba(20,120,114,0.38);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 10px rgba(16,110,104,0.08);
+}
+.preset:disabled:active{transform:none;}
 .ico{
   width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
 }
@@ -335,7 +366,31 @@ input.st-search{
 .btn:disabled{opacity:0.4;pointer-events:none;}
 .btn-P{background:var(--P);color:#fff;}
 .btn.od-query{
+  position:relative;overflow:hidden;
   width:4.6rem;flex:0 0 4.6rem;padding:8px 0;letter-spacing:0;align-self:stretch;
+  color:#fff;font-weight:800;font-size:1.05rem;
+  border:1px solid rgba(255,255,255,0.42);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.05) 42%, rgba(4,18,56,0.22) 100%),
+    linear-gradient(165deg, #3b86ea 0%, #1a56c4 50%, #0e3a86 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 -8px 12px rgba(6,24,70,0.28),
+    0 8px 16px rgba(14,50,120,0.28);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.btn.od-query::before{
+  content:"";position:absolute;left:12%;right:12%;top:6px;height:38%;z-index:0;
+  border-radius:40%;pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0));
+}
+.btn.od-query svg,.btn.od-query span{position:relative;z-index:1;}
+.btn.od-query:active{
+  transform:translateY(3px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.45),
+    inset 0 5px 10px rgba(6,24,70,0.28),
+    0 2px 6px rgba(14,50,120,0.2);
 }
 .btn-sm{
   background:transparent;border:2px solid var(--P);color:var(--P);
@@ -691,7 +746,7 @@ input:focus,select:focus{border-color:var(--P);}
     </div>
     <button type="button" class="btn btn-P od-query" id="stopQueryBtn" onclick="queryStops()" disabled>
       <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 1 0-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zM10 14a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
-      查詢
+      <span>查詢</span>
     </button>
   </div>
   <div id="stopLegs" style="padding:4px 14px 12px"></div>
@@ -3378,8 +3433,8 @@ function renderStopHome() {
   const favs = (S.favs && S.favs.length === 9) ? S.favs : Array.from({ length: 9 }, (_, i) => (S.favs && S.favs[i]) || blankFav());
   if (box) {
     const homeCard = home.name
-      ? `<button type="button" class="home-card" onclick="tapHome()">${iconBadge(home.icon || 'home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">${escHtml(home.name)}</span></span><span class="chev">›</span></button>`
-      : `<button type="button" class="home-card" disabled>${iconBadge('home', 48)}<span style="flex:1;min-width:0"><span class="ht">回家</span><span class="hs">到設定裡選擇站名</span></span></button>`;
+      ? `<button type="button" class="home-card" onclick="tapHome()"><span class="ht">回家</span><span class="hs">${escHtml(home.name)}</span></button>`
+      : `<button type="button" class="home-card" disabled><span class="ht">回家</span><span class="hs">到設定裡選擇站名</span></button>`;
     const grid = favs.map((f, i) => f.name
       ? `<button type="button" class="preset" onclick="tapFav(${i})"><span class="nm">${escHtml(f.name)}</span></button>`
       : `<button type="button" class="preset empty" disabled></button>`
