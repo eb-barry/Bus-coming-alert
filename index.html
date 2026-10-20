@@ -361,6 +361,13 @@ body{
 .leg-loc{color:#0e3a86;}
 .leg-wait{color:var(--TX2);}
 .leg-second{margin-left:auto;flex-shrink:0;color:var(--TX2);font-weight:700;}
+.stop-pause{
+  display:none;width:calc(100% - 28px);margin:10px 14px 0;padding:12px 14px;
+  border-radius:14px;border:1px dashed rgba(14,58,134,0.35);
+  background:#f4f7fb;color:#0e3a86;font-weight:800;font-size:0.95rem;
+  font-family:inherit;cursor:pointer;text-align:center;
+}
+.stop-pause.show{display:block;}
 .leg-mute{
   width:34px;height:34px;border:none;border-radius:50%;background:#fff;color:#c1121f;
   display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;
@@ -804,6 +811,7 @@ input:focus,select:focus{border-color:var(--P);}
       <span>查詢</span>
     </button>
   </div>
+  <button type="button" id="stopPause" class="stop-pause" onclick="resumeStopUpdates()">已暫停更新，點一下可繼續</button>
   <div id="stopLegs" style="padding:4px 14px 12px"></div>
 </div>
 
@@ -1155,7 +1163,7 @@ function markCall() { API_RATE.calls.push(Date.now()); }
 const S = {
   busQueue:[],   // routes waiting to be monitored (user added but not started)
   buses:[],      // actively monitored routes
-  lat:null, lng:null, gpsWid:null,
+  lat:null, lng:null, gpsWid:null, gpsOk:false,
   monitoring:false, token:null, tokenExp:0,
   timerId:null, countdown:60, currentInterval:INTERVAL_FAR,
   lastAlert:{}, arrived:new Set(),
@@ -1182,6 +1190,13 @@ const S = {
   namePick:null,
   stationHits:[],
   stopLegs:null,
+  track:null,
+  boardTimer:null,
+  stopPaused:false,
+  stopHold:'',
+  hiddenAt:0,
+  hideTimer:null,
+  monitorStartedAt:0,
   kbuf:'',
   // Boarding detection: key -> {arrivedLat, arrivedLng, timerId}
   boardingCheck:{},
@@ -1223,10 +1238,28 @@ document.addEventListener('DOMContentLoaded', () => {
   startGPS();
   checkNotifPerm();
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) return;
+    if (document.hidden) {
+      S.hiddenAt = Date.now();
+      if (S.hideTimer) clearTimeout(S.hideTimer);
+      S.hideTimer = setTimeout(() => {
+        if (!document.hidden) return;
+        if (S.mode !== 'stop' || S.stopPaused === 'tap') return;
+        if (!S.stopLegs || !S.stopLegs.length) return;
+        if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
+        S.stopPaused = 'hidden';
+      }, 15 * 60 * 1000);
+      return;
+    }
+    if (S.hideTimer) { clearTimeout(S.hideTimer); S.hideTimer = null; }
+    const hiddenFor = S.hiddenAt ? Date.now() - S.hiddenAt : 0;
+    S.hiddenAt = 0;
     navigator.serviceWorker?.getRegistration().then(reg => reg?.update()).catch(() => {});
-    if (S.monitoring) fetchAll();
-    if (S.mode === 'stop' && S.stopLegs && S.stopLegs.length) refreshStopLegs();
+    if (!capRouteMonitor() && S.monitoring) fetchAll();
+    if (S.mode === 'stop' && S.stopPaused !== 'tap' && S.stopLegs && S.stopLegs.length) {
+      const catchUp = S.stopPaused === 'hidden' || hiddenFor >= 15 * 60 * 1000;
+      if (catchUp) S.stopPaused = false;
+      refreshStopLegs({ catchUp });
+    }
   });
   window.addEventListener('beforeunload', stopMonitor);
   document.querySelectorAll('.mbd').forEach(bd =>
@@ -2181,6 +2214,7 @@ function startGPS() {
       updateStatus();
       if (pLat&&S.monitoring&&haversine(pLat,pLng,S.lat,S.lng)>50) recomputeNearest();
       if (S.mode === 'stop' && S.awaitOriginGps) fillOriginFromGps();
+      if (S.track && S.track.arrivedAt) armBoardCheck();
       const pick = document.getElementById('namePick');
       const qEl = document.getElementById('stopQ');
       if (pick?.classList.contains('open') && qEl && !qEl.value.trim()) renderStationHits();
@@ -2191,6 +2225,7 @@ function startGPS() {
 }
 
 function updateGpsUI(ok,msg) {
+  S.gpsOk = !!ok;
   const dot=document.getElementById('gpsDot');
   const lbl=document.getElementById('gpsLbl');
   dot.className='gps-dot '+(ok?'ok':'err');
@@ -2227,6 +2262,7 @@ function haversine(la1,lo1,la2,lo2) {
 ══════════════════════════════════════════ */
 function startMonitor() {
   S.monitoring=true; S.currentInterval=INTERVAL_FAR;
+  if (!S.monitorStartedAt) S.monitorStartedAt = Date.now();
   updateStatus(); acquireWakeLock();
   startAudioKeepAlive();   // Method C background keep-alive
   document.getElementById('alertSec').style.display='block'; // show immediately
@@ -2236,6 +2272,7 @@ function startMonitor() {
 
 function stopMonitor() {
   S.monitoring=false;
+  S.monitorStartedAt = 0;
   if (S.timerId) { clearTimeout(S.timerId); S.timerId=null; }
   releaseWakeLock();
   window.speechSynthesis?.cancel();
@@ -2249,12 +2286,24 @@ function stopMonitor() {
   updateStatus();
 }
 
+function capRouteMonitor() {
+  if (!S.monitoring || !S.monitorStartedAt) return false;
+  if (Date.now() - S.monitorStartedAt < 2 * 60 * 60 * 1000) return false;
+  S.monitorStartedAt = 0;
+  stopMonitor();
+  toast('監控已暫停');
+  sendNotif('監控已暫停', '已追蹤 2 小時，請重新開始', false).catch(() => {});
+  return true;
+}
 function scheduleNext() {
   if (S.timerId) clearTimeout(S.timerId);
+  if (!S.monitoring || capRouteMonitor()) return;
   S.countdown=Math.round(S.currentInterval/1000);
   updateCountdown();
   S.timerId=setTimeout(()=>{
-    if (S.monitoring) { fetchAll(); scheduleNext(); }
+    if (!S.monitoring || capRouteMonitor()) return;
+    fetchAll();
+    scheduleNext();
   }, S.currentInterval);
   // Countdown tick
   startCountdownTick();
@@ -2371,6 +2420,7 @@ function absorbRealtime(bus, rt, alertStops, results, tracker) {
 }
 
 async function fetchAll() {
+  if (capRouteMonitor()) return;
   if (!S.monitoring || !S.buses.length) return;
   const alertStops = parseInt(document.getElementById('alertStops').value);
   const results = [];
@@ -3582,6 +3632,8 @@ window.addEventListener('resize', fitPresetNames);
 function clearStopResults() {
   S.stopLegs = null;
   S.voiceLegKey = null;
+  S.stopHold = '';
+  releaseStopWatch();
   _saidSeq = null;
   _saidArrive = false;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
@@ -4033,6 +4085,54 @@ async function routesThroughName(city, stopName) {
   return slim;
 }
 
+function stickFollowedBus(leg, mine, snap) {
+  const tr = S.track;
+  if (!tr || tr.key !== legKey(leg)) return;
+  if (!tr.plate) {
+    const plate = (leg.curPlate || '').trim();
+    if (plate) tr.plate = plate;
+  }
+  if (!tr.plate) return;
+  const row = mine.find(r => (r.PlateNumb || '').trim() === tr.plate);
+  if (!row) {
+    if (tr.arrivedAt) leg._trackPassed = true;
+    else {
+      leg.away = snap.away;
+      leg.curStop = snap.curStop || '';
+      leg.curSeq = snap.curSeq;
+      leg.etaSec = snap.etaSec;
+      leg.secondAway = snap.secondAway;
+      leg.curPlate = snap.curPlate || '';
+      leg.prevStop = snap.prevStop || '';
+      leg.prevPast = !!snap.prevPast;
+    }
+    return;
+  }
+  const seq = Number(row.StopSequence);
+  if (!(seq <= leg.fromSeq)) {
+    leg._trackPassed = true;
+    return;
+  }
+  const diff = leg.fromSeq - seq;
+  leg.away = diff;
+  leg.curStop = ((row.StopName?.Zh_tw) || '').trim();
+  leg.curSeq = seq;
+  leg.curPlate = tr.plate;
+  leg.etaSec = (diff === 0 && Number(row.EstimateTime) > 0) ? Number(row.EstimateTime) : null;
+  const others = pickTwoBuses(
+    mine.filter(r => Number(r.BusStatus) <= 2 && (r.PlateNumb || '').trim() !== tr.plate),
+    leg.fromSeq
+  );
+  leg.secondAway = others.nearest ? others.nearest.diff : null;
+  leg.prevStop = '';
+  leg.prevPast = false;
+  if (diff <= 2 && !tr.intensiveSince) tr.intensiveSince = Date.now();
+  if (diff === 0 && !tr.arrivedAt) {
+    tr.arrivedAt = Date.now();
+    armBoardCheck();
+  }
+}
+
 async function decorateLegs(legs, opts = {}) {
   const groups = new Map();
   for (const leg of legs) {
@@ -4063,6 +4163,11 @@ async function decorateLegs(legs, opts = {}) {
     for (const leg of list) {
       leg.rtKnown = true;
       const mine = rows.filter(r => rowMatchesLeg(r, leg));
+      const snap = {
+        away: leg.away, curStop: leg.curStop, curSeq: leg.curSeq,
+        etaSec: leg.etaSec, secondAway: leg.secondAway, curPlate: leg.curPlate,
+        prevStop: leg.prevStop, prevPast: leg.prevPast,
+      };
       const approaching = mine.filter(r => Number(r.BusStatus) <= 2);
       const picked = pickTwoBuses(approaching, leg.fromSeq);
       if (picked.nearest) {
@@ -4071,29 +4176,32 @@ async function decorateLegs(legs, opts = {}) {
         leg.away = minD;
         leg.curStop = ((best.StopName?.Zh_tw) || '').trim();
         leg.curSeq = best.StopSequence;
+        leg.curPlate = (best.PlateNumb || '').trim();
         // EstimateTime 是到這筆資料所在站的秒數，只有公車就在起站才拿來當到站時間。
         leg.etaSec = (minD === 0 && Number(best.EstimateTime) > 0) ? Number(best.EstimateTime) : null;
         leg.secondAway = picked.second ? picked.second.diff : null;
         leg.prevStop = '';
         leg.prevPast = false;
-        continue;
+      } else {
+        // 起站前面沒有車。同一包資料裡，剛開過起站的那台就是前一班。
+        leg.away = null;
+        leg.curStop = '';
+        leg.curSeq = null;
+        leg.curPlate = '';
+        leg.etaSec = null;
+        leg.secondAway = null;
+        let prev = null;
+        for (const b of mine) {
+          const st = Number(b.BusStatus);
+          if (st !== 0 && st !== 2) continue;
+          const seq = Number(b.StopSequence);
+          if (!(seq > leg.fromSeq)) continue;
+          if (!prev || seq < Number(prev.StopSequence)) prev = b;
+        }
+        leg.prevStop = prev ? ((prev.StopName?.Zh_tw) || '').trim() : '';
+        leg.prevPast = !!(prev && Number(prev.StopSequence) > leg.toSeq);
       }
-      // 起站前面沒有車。同一包資料裡，剛開過起站的那台就是前一班。
-      leg.away = null;
-      leg.curStop = '';
-      leg.curSeq = null;
-      leg.etaSec = null;
-      leg.secondAway = null;
-      let prev = null;
-      for (const b of mine) {
-        const st = Number(b.BusStatus);
-        if (st !== 0 && st !== 2) continue;
-        const seq = Number(b.StopSequence);
-        if (!(seq > leg.fromSeq)) continue;
-        if (!prev || seq < Number(prev.StopSequence)) prev = b;
-      }
-      leg.prevStop = prev ? ((prev.StopName?.Zh_tw) || '').trim() : '';
-      leg.prevPast = !!(prev && Number(prev.StopSequence) > leg.toSeq);
+      stickFollowedBus(leg, mine, snap);
     }
   }
   if (Object.keys(byKey).length) S.freshRt = { at: Date.now(), byKey };
@@ -4173,13 +4281,108 @@ function legsForRefresh() {
   const unknown = (S.stopLegs || []).filter(l => !l.rtKnown);
   return unknown.length ? unknown : (S.stopLegs || []);
 }
+function gpsLive() {
+  return !!(S.gpsOk && S.lat != null && S.lng != null);
+}
+function clearBoardTimer() {
+  if (S.boardTimer) { clearTimeout(S.boardTimer); S.boardTimer = null; }
+}
+function releaseStopWatch() {
+  S.track = null;
+  S.stopPaused = false;
+  clearBoardTimer();
+  showStopPause(false);
+}
+function showStopPause(on) {
+  document.getElementById('stopPause')?.classList.toggle('show', !!on);
+}
+function followTimedOut(now) {
+  const tr = S.track;
+  if (!tr || gpsLive()) return false;
+  const t = now || Date.now();
+  if (tr.arrivedAt && t - tr.arrivedAt >= 10 * 60 * 1000) return true;
+  if (tr.intensiveSince && t - tr.intensiveSince >= 20 * 60 * 1000) return true;
+  return false;
+}
+function pauseStopForTap() {
+  if (S.stopPaused === 'tap') return;
+  S.stopPaused = 'tap';
+  S.track = null;
+  S.voiceLegKey = null;
+  clearBoardTimer();
+  if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
+  showStopPause(true);
+  renderStopLegs();
+}
+function resumeStopUpdates() {
+  if (S.stopPaused !== 'tap') return;
+  S.stopPaused = false;
+  S.track = null;
+  S.voiceLegKey = null;
+  showStopPause(false);
+  refreshStopLegs();
+}
+function armBoardCheck() {
+  if (S.boardTimer || !gpsLive() || !S.track || !S.track.arrivedAt) return;
+  const snapLat = S.lat, snapLng = S.lng;
+  S.boardTimer = setTimeout(() => finishBoardCheck(snapLat, snapLng), 60000);
+}
+function finishBoardCheck(snapLat, snapLng) {
+  S.boardTimer = null;
+  if (S.mode !== 'stop') return;
+  const moved = (S.lat != null && S.lng != null && snapLat != null && snapLng != null)
+    ? haversine(snapLat, snapLng, S.lat, S.lng) : 0;
+  if (moved >= 50) finishBoarded();
+  else finishMissed();
+}
+function finishBoarded() {
+  clearBoardTimer();
+  S.track = null;
+  S.voiceLegKey = null;
+  clearStopResults();
+  S.stopHold = 'boarded';
+  renderStopLegs();
+  toast('已上車，這條先不再密集更新');
+  speak('已上車，這條先不再密集更新');
+}
+function finishMissed() {
+  clearBoardTimer();
+  S.track = null;
+  S.voiceLegKey = null;
+  toast('這班已過');
+  speak('這班已過');
+  if (S.mode === 'stop' && S.stopLegs && S.stopLegs.length) scheduleStopPoll();
+}
+function beginStopTrack(leg) {
+  clearBoardTimer();
+  const close = !!(leg.rtKnown && leg.away != null && leg.away <= 2);
+  S.track = {
+    key: legKey(leg),
+    plate: (leg.curPlate || '').trim(),
+    intensiveSince: close ? Date.now() : null,
+    arrivedAt: (leg.rtKnown && leg.away === 0) ? Date.now() : null,
+  };
+  if (S.track.arrivedAt) armBoardCheck();
+}
+function consumeTrackPassed() {
+  const legs = S.stopLegs || [];
+  const hit = legs.some(l => l._trackPassed);
+  legs.forEach(l => { l._trackPassed = false; });
+  return hit;
+}
+function endFollowPassed() {
+  S.track = null;
+  S.voiceLegKey = null;
+  _saidSeq = null;
+}
 function pollDelay() {
   if (S.stopBackoffUntil && Date.now() < S.stopBackoffUntil) {
     return Math.max(15000, S.stopBackoffUntil - Date.now());
   }
   const slot = msUntilSlot();
   const selected = selectedLeg();
-  if (selected) {
+  const tr = S.track;
+  if (selected && tr && tr.key === legKey(selected)) {
     if (!selected.rtKnown) return Math.max(slot, 300);
     const close = selected.away != null && selected.away <= 2;
     return Math.max(close ? 12000 : 30000, slot);
@@ -4191,20 +4394,26 @@ function pollDelay() {
 function scheduleStopPoll() {
   if (S.stopPoll) clearTimeout(S.stopPoll);
   S.stopPoll = null;
+  if (S.stopPaused === 'tap' || S.stopPaused === 'hidden') return;
+  if (followTimedOut()) { pauseStopForTap(); return; }
   if (S.mode !== 'stop' || !S.stopLegs || !S.stopLegs.length) return;
   const ms = pollDelay();
   S.stopPollMs = ms;
   S.stopPoll = setTimeout(() => { S.stopPoll = null; refreshStopLegs(); }, ms);
 }
-async function refreshStopLegs() {
+async function refreshStopLegs(opts = {}) {
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
+  if (S.stopPaused === 'tap') return;
+  if (S.stopPaused === 'hidden' && !opts.catchUp) return;
+  if (!opts.catchUp && followTimedOut()) { pauseStopForTap(); return; }
   if (S.mode !== 'stop' || !S.stopLegs || !S.stopLegs.length || _stopBusy || _stopRefresh) {
-    if (S.mode === 'stop' && S.stopLegs && S.stopLegs.length) scheduleStopPoll();
+    if (S.mode === 'stop' && S.stopLegs && S.stopLegs.length && S.stopPaused !== 'tap' && S.stopPaused !== 'hidden') scheduleStopPoll();
     return;
   }
   _stopRefresh = true;
   try {
     await decorateLegs(legsForRefresh(), { wait: false });
+    if (consumeTrackPassed()) endFollowPassed();
     S.stopLegs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
     noteVoice();
     renderStopLegs();
@@ -4221,6 +4430,8 @@ async function queryStops() {
   if (S.originName === S.destName) { toast('起站與訖站相同'); return; }
   _stopBusy = true;
   S.voiceLegKey = null;
+  S.stopHold = '';
+  releaseStopWatch();
   _saidSeq = null;
   _saidArrive = false;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
@@ -4282,6 +4493,10 @@ function scrollStopResults() {
 function renderStopLegs() {
   const box = document.getElementById('stopLegs');
   if (!box) return;
+  if (S.stopHold === 'boarded') {
+    box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">已上車，這條先不再密集更新</div>';
+    return;
+  }
   const legs = S.stopLegs || [];
   if (!legs.length) {
     box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">沒有直達路線</div>';
@@ -4306,6 +4521,8 @@ function renderStopLegs() {
 }
 function muteStopVoice() {
   S.voiceLegKey = null;
+  S.track = null;
+  clearBoardTimer();
   _saidSeq = null;
   _saidArrive = false;
   window.speechSynthesis?.cancel();
@@ -4341,6 +4558,7 @@ function monitorLeg(i) {
   if (!leg) return;
   unlockAudio();
   S.voiceLegKey = legKey(leg);
+  beginStopTrack(leg);
   _saidSeq = null;
   _saidArrive = false;
   noteVoice();
