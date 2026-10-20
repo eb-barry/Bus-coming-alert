@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v20';  // route card location layout, disable text callout
+const CACHE = 'bus-alert-v21';  // pending position label, 12s follow on the selected route
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',

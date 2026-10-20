@@ -1140,8 +1140,8 @@ const INTERVAL_FAR   = 60000;  // > alertStops: 60s
 const INTERVAL_NEAR  = 30000;  // within alertStops: 30s
 const INTERVAL_CLOSE = 15000;  // ≤ 2 stops: 15s, one city group
 
-// API rate limiter: max 4 calls/min (leave 1 buffer)
-const API_RATE = { calls:[], MAX:4, WINDOW:60000 };
+// Free TDX key: 5 data calls per minute, shared by every city.
+const API_RATE = { calls:[], MAX:5, WINDOW:60000 };
 function canCall() {
   const now = Date.now();
   API_RATE.calls = API_RATE.calls.filter(t => now - t < API_RATE.WINDOW);
@@ -4033,7 +4033,7 @@ async function routesThroughName(city, stopName) {
   return slim;
 }
 
-async function decorateLegs(legs) {
+async function decorateLegs(legs, opts = {}) {
   const groups = new Map();
   for (const leg of legs) {
     if (!groups.has(leg.city)) groups.set(leg.city, []);
@@ -4041,13 +4041,27 @@ async function decorateLegs(legs) {
   }
   const byKey = {};
   for (const [city, list] of groups) {
-    // 額度用完就保留畫面上的站數，不要改成尚未發車。
-    if (!canCall()) continue;
+    // 額度用完就保留畫面上的站數。沒問過的路線維持「確認中」，不要改成尚未發車。
+    if (opts.wait) {
+      try { await waitSlot(); }
+      catch (e) { continue; }
+    } else if (!canCall()) continue;
     markCall();
     const buses = list.map(l => ({ tdxName: l.name, city, isIntercity: false, routeId: l.routeId, dir: l.dir }));
-    const rows = tdxArr(await apiFetch(realtimePathFor(city, buses)));
+    let rows;
+    try {
+      rows = tdxArr(await apiFetch(realtimePathFor(city, buses)));
+      S.stopBackoffUntil = 0;
+    } catch (e) {
+      if (/頻繁|429/.test(String(e && e.message))) {
+        S.stopBackoffUntil = Date.now() + 15000;
+        continue;
+      }
+      throw e;
+    }
     byKey[city] = { rows, ids: new Set(buses.map(busIdentity)) };
     for (const leg of list) {
+      leg.rtKnown = true;
       const mine = rows.filter(r => rowMatchesLeg(r, leg));
       const approaching = mine.filter(r => Number(r.BusStatus) <= 2);
       const picked = pickTwoBuses(approaching, leg.fromSeq);
@@ -4107,6 +4121,7 @@ function legAwayText(leg) {
   return leg.away + ' 站';
 }
 function legStatus(leg) {
+  if (leg.away == null && !leg.rtKnown) return '<span class="leg-wait">車輛位置確認中</span>';
   if (leg.away == null) {
     const stop = leg.prevStop ? escHtml(leg.prevStop) : '';
     const text = !stop ? '尚未發車'
@@ -4143,12 +4158,42 @@ function noteVoice() {
     announceApproach(bus, leg.away, leg.curStop || '');
   }
 }
+function selectedLeg() {
+  return (S.stopLegs || []).find(l => legKey(l) === S.voiceLegKey) || null;
+}
+function msUntilSlot() {
+  const now = Date.now();
+  API_RATE.calls = API_RATE.calls.filter(t => now - t < API_RATE.WINDOW);
+  if (API_RATE.calls.length < API_RATE.MAX) return 0;
+  return Math.max(300, Math.min(...API_RATE.calls) + API_RATE.WINDOW - now + 40);
+}
+function legsForRefresh() {
+  const selected = selectedLeg();
+  if (selected) return [selected];
+  const unknown = (S.stopLegs || []).filter(l => !l.rtKnown);
+  return unknown.length ? unknown : (S.stopLegs || []);
+}
+function pollDelay() {
+  if (S.stopBackoffUntil && Date.now() < S.stopBackoffUntil) {
+    return Math.max(15000, S.stopBackoffUntil - Date.now());
+  }
+  const slot = msUntilSlot();
+  const selected = selectedLeg();
+  if (selected) {
+    if (!selected.rtKnown) return Math.max(slot, 300);
+    const close = selected.away != null && selected.away <= 2;
+    return Math.max(close ? 12000 : 30000, slot);
+  }
+  if ((S.stopLegs || []).some(l => !l.rtKnown)) return Math.max(slot, 300);
+  const cities = new Set((S.stopLegs || []).map(l => l.city));
+  return Math.max(cities.size > 1 ? 30000 : 15000, slot);
+}
 function scheduleStopPoll() {
   if (S.stopPoll) clearTimeout(S.stopPoll);
   S.stopPoll = null;
   if (S.mode !== 'stop' || !S.stopLegs || !S.stopLegs.length) return;
-  const cities = new Set(S.stopLegs.map(l => l.city));
-  const ms = cities.size > 1 ? 30000 : 15000;
+  const ms = pollDelay();
+  S.stopPollMs = ms;
   S.stopPoll = setTimeout(() => { S.stopPoll = null; refreshStopLegs(); }, ms);
 }
 async function refreshStopLegs() {
@@ -4159,11 +4204,13 @@ async function refreshStopLegs() {
   }
   _stopRefresh = true;
   try {
-    await decorateLegs(S.stopLegs);
+    await decorateLegs(legsForRefresh(), { wait: false });
     S.stopLegs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
     noteVoice();
     renderStopLegs();
-  } catch (e) {}
+  } catch (e) {
+    S.stopBackoffUntil = Date.now() + 15000;
+  }
   _stopRefresh = false;
   scheduleStopPoll();
 }
@@ -4203,7 +4250,7 @@ async function queryStops() {
     }
     if (!merged.length && lastError) throw lastError;
     let legs = merged;
-    legs = await decorateLegs(legs);
+    legs = await decorateLegs(legs, { wait: true });
     legs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
     S.stopLegs = legs;
     renderStopLegs();
@@ -4265,6 +4312,7 @@ function muteStopVoice() {
   _sQueue.length = 0;
   _sRunning = false;
   renderStopLegs();
+  scheduleStopPoll();
 }
 
 function legToBus(leg) {
@@ -4297,6 +4345,11 @@ function monitorLeg(i) {
   _saidArrive = false;
   noteVoice();
   renderStopLegs();
+  const picked = selectedLeg();
+  const close = picked && picked.rtKnown && picked.away != null && picked.away <= 2;
+  if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
+  if (close || (picked && !picked.rtKnown)) refreshStopLegs();
+  else scheduleStopPoll();
 }
 
 </script>
