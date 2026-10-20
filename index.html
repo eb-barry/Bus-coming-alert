@@ -31,7 +31,9 @@
 }
 [data-font="large"]  { --FS:1.2; }
 [data-font="xlarge"] { --FS:1.45; }
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+input,textarea{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default;}
 html{font-size:calc(17px * var(--FS));}
 body{
   font-family:"PingFang TC","Microsoft JhengHei","蘋方-繁","微軟正黑體","Noto Sans TC",sans-serif;
@@ -350,10 +352,15 @@ body{
 .leg-dir{color:#0e3a86;font-weight:700;font-size:0.95rem;line-height:1.1;}
 .leg-away{margin-left:auto;color:#e53935;font-weight:800;font-size:1.45rem;line-height:1;flex-shrink:0;}
 .leg-sub{
-  display:block;min-height:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+  display:flex;align-items:center;gap:8px;min-height:0;overflow:hidden;
   color:var(--TX2);font-size:0.78rem;font-weight:700;line-height:26px;
 }
-.leg-second{font-weight:700;}
+.leg-loc,.leg-wait{
+  min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
+.leg-loc{color:#0e3a86;}
+.leg-wait{color:var(--TX2);}
+.leg-second{margin-left:auto;flex-shrink:0;color:var(--TX2);font-weight:700;}
 .leg-mute{
   width:34px;height:34px;border:none;border-radius:50%;background:#fff;color:#c1121f;
   display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;
@@ -4100,24 +4107,23 @@ function legAwayText(leg) {
   return leg.away + ' 站';
 }
 function legStatus(leg) {
-  const where = leg.curStop ? escHtml(leg.curStop) : '';
   if (leg.away == null) {
-    if (!leg.prevStop) return '尚未發車';
-    const stop = escHtml(leg.prevStop);
-    if (leg.prevPast) return `尚未發車 · 前班已過訖站，現在在${stop}`;
-    return `尚未發車 · 前班在${stop}`;
+    const stop = leg.prevStop ? escHtml(leg.prevStop) : '';
+    const text = !stop ? '尚未發車'
+      : leg.prevPast ? `尚未發車 · 前班已過訖站，現在在${stop}`
+      : `尚未發車 · 前班在${stop}`;
+    return `<span class="leg-wait">${text}</span>`;
   }
-  let text = where;
+  const where = leg.curStop ? escHtml(leg.curStop) : '';
+  let loc = where ? `目前位置：${where}` : '';
   if (leg.away === 0 && leg.etaSec) {
-    const phrase = leg.etaSec < 60 ? '1 分鐘內到起站' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘到起站`;
-    text = where ? phrase + ' · ' + where : phrase;
-  } else if (leg.away === 0) {
-    text = where ? '已到起站 · ' + where : '已到起站';
+    const phrase = leg.etaSec < 60 ? '1 分鐘內' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘`;
+    loc = where ? `目前位置：${where} · ${phrase}` : phrase;
   }
   const extra = secondAwayText(leg.away, leg.secondAway);
-  if (!extra) return text;
-  const html = `<span class="leg-second">${extra}</span>`;
-  return text ? `${text} · ${html}` : html;
+  const left = loc ? `<span class="leg-loc">${loc}</span>` : '';
+  const right = extra ? `<span class="leg-second">${extra}</span>` : '';
+  return left + right;
 }
 function noteVoice() {
   const leg = (S.stopLegs || []).find(l => legKey(l) === S.voiceLegKey);
