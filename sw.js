@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v19';  // second bus stop count on the same realtime payload
+const CACHE = 'bus-alert-v20';  // route card location layout, disable text callout
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',
