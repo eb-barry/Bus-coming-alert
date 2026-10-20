@@ -185,7 +185,8 @@ body{
   width:52px;border-radius:var(--Rs);border:2px solid var(--BD);background:#fff;
   font-family:inherit;font-weight:800;color:var(--P);cursor:pointer;touch-action:manipulation;
 }
-.fav-grid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-auto-rows:96px;gap:8px;margin-top:10px;}
+.fav-grid{display:grid;grid-template-columns:1fr 1fr 1fr;grid-auto-rows:96px;gap:8px;margin-top:2px;}
+.fav-note{margin-top:4px;color:var(--TX2);font-size:0.8rem;font-weight:700;line-height:1.45;}
 .fav-stop{
   position:relative;min-height:72px;border-radius:var(--Rs);border:2px solid var(--BD);
   background:#fff;font-family:inherit;font-weight:800;font-size:0.92rem;color:var(--TX);
@@ -230,12 +231,12 @@ body{
 .pick-row{display:flex;gap:8px;align-items:center;}
 .pick-row .st-search{flex:1;}
 .fav-stop:disabled{opacity:0.45;}
-.home-card,.preset,.od-row button.od-btn{
+.preset,.od-row button.od-btn{
   width:100%;border:none;background:#fff;border-radius:16px;
   box-shadow:0 4px 16px rgba(26,86,160,0.08);
   font-family:inherit;color:var(--TX);cursor:pointer;touch-action:manipulation;
 }
-.home-card,.preset:not(.empty){
+.preset:not(.empty):not(.home-slot){
   position:relative;overflow:hidden;color:#0d3f3c;
   border:1px solid rgba(255,255,255,0.72);
   background:
@@ -247,27 +248,18 @@ body{
     0 8px 16px rgba(16,110,104,0.2);
   transition:transform .12s ease, box-shadow .12s ease;
 }
-.home-card::before,.preset:not(.empty)::before{
+.preset:not(.empty):not(.home-slot)::before{
   content:"";position:absolute;left:10%;right:10%;top:5px;height:42%;
   border-radius:40%;pointer-events:none;
   background:linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0));
 }
-.home-card:active,.preset:not(.empty):active{
-  transform:translateY(3px);
+.preset:not(.empty):not(.home-slot):active{
+  transform:translateY(6px);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.7),
     inset 0 5px 10px rgba(10,90,86,0.16),
     0 2px 6px rgba(16,110,104,0.16);
 }
-.home-card{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:2px;min-height:92px;padding:16px 18px;text-align:center;
-}
-.home-card:disabled{opacity:0.62;cursor:default;}
-.home-card:disabled:active{transform:none;}
-.home-card .ht,.home-card .hs{position:relative;z-index:1;}
-.home-card .ht{font-size:1.85rem;font-weight:800;line-height:1.1;color:#0d3f3c;}
-.home-card .hs{display:block;margin-top:2px;color:#145650;font-size:1.2rem;font-weight:800;}
 .preset{
   height:96px;min-height:96px;max-height:96px;padding:8px;
   display:flex;align-items:center;justify-content:center;
@@ -278,6 +270,38 @@ body{
   width:100%;max-width:100%;min-width:0;max-height:80px;
   font-weight:800;font-size:1.35rem;line-height:1.15;color:#0d3f3c;
   overflow:hidden;white-space:normal;word-break:break-all;text-align:center;
+}
+.preset.home-slot{
+  flex-direction:column;gap:1px;padding:6px 4px;color:#fff;
+  border:1px solid rgba(255,255,255,0.45);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0.05) 42%, rgba(4,18,56,0.22) 100%),
+    linear-gradient(165deg, #3b86ea 0%, #1a56c4 50%, #0e3a86 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 -8px 12px rgba(6,24,70,0.28),
+    0 8px 16px rgba(14,50,120,0.28);
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.preset.home-slot::before{
+  content:"";position:absolute;left:10%;right:10%;top:4px;height:38%;z-index:0;
+  border-radius:40%;pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,0.55), rgba(255,255,255,0));
+}
+.preset.home-slot .hm,.preset.home-slot .nm{position:relative;z-index:1;color:#fff;}
+.preset.home-slot .hm{
+  font-size:2rem;font-weight:800;line-height:1;letter-spacing:0.06em;flex-shrink:0;
+}
+.preset.home-slot .nm{
+  margin-top:2px;max-height:2.2em;font-size:0.78rem;font-weight:700;line-height:1.15;color:#fff;
+}
+.preset.home-slot:disabled{opacity:0.55;cursor:default;}
+.preset.home-slot:not(:disabled):active{
+  transform:translateY(6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.45),
+    inset 0 5px 10px rgba(6,24,70,0.28),
+    0 2px 6px rgba(14,50,120,0.2);
 }
 .od-btn .chev{margin-left:auto;color:#9aa6b8;font-size:1.3rem;font-weight:400;}
 .preset.empty{
@@ -292,16 +316,38 @@ body{
 .ico svg{display:block;}
 .od-btn{display:flex;align-items:center;gap:8px;padding:12px;text-align:left;font-weight:800;}
 .leg{
+  position:relative;overflow:hidden;
   width:100%;display:grid;grid-template-rows:2fr 1fr;height:78px;
-  margin-top:8px;padding:4px 12px;border-radius:16px;border:none;background:#e5f6ea;
-  box-shadow:0 4px 16px rgba(26,86,160,0.08);font-family:inherit;cursor:pointer;
-  text-align:left;overflow:hidden;
+  margin-top:8px;padding:4px 12px;border-radius:16px;
+  border:1px solid rgba(255,255,255,0.75);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.08) 48%, rgba(20,80,150,0.1) 100%),
+    linear-gradient(165deg, #e7f3ff 0%, #c5e2fb 54%, #9cccfa 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.95),
+    inset 0 -8px 12px rgba(20,70,140,0.1),
+    0 4px 10px rgba(26,86,160,0.12);
+  font-family:inherit;cursor:pointer;text-align:left;
+  transition:transform .12s ease, box-shadow .12s ease;
+}
+.leg::before{
+  content:"";position:absolute;left:8%;right:8%;top:3px;height:40%;z-index:0;
+  border-radius:40%;pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0));
+}
+.leg:active{
+  transform:translateY(6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.7),
+    inset 0 4px 8px rgba(20,70,140,0.12),
+    0 2px 5px rgba(26,86,160,0.12);
 }
 .leg.on{outline:2px solid #1a73e8;}
+.leg-top,.leg-sub{position:relative;z-index:1;}
 .leg-top{display:flex;align-items:center;gap:6px;min-height:0;min-width:0;}
 .leg-title{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;}
-.leg-name{color:#1a73e8;font-weight:800;font-size:1.35rem;line-height:1.05;}
-.leg-dir{color:#1a73e8;font-weight:700;font-size:0.95rem;line-height:1.1;}
+.leg-name{color:#0e3a86;font-weight:800;font-size:1.35rem;line-height:1.05;}
+.leg-dir{color:#0e3a86;font-weight:700;font-size:0.95rem;line-height:1.1;}
 .leg-away{margin-left:auto;color:#e53935;font-weight:800;font-size:1.45rem;line-height:1;flex-shrink:0;}
 .leg-sub{
   display:block;min-height:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
@@ -386,7 +432,7 @@ input.st-search{
 }
 .btn.od-query svg,.btn.od-query span{position:relative;z-index:1;}
 .btn.od-query:active{
-  transform:translateY(3px);
+  transform:translateY(6px);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.45),
     inset 0 5px 10px rgba(6,24,70,0.28),
@@ -913,6 +959,7 @@ input:focus,select:focus{border-color:var(--P);}
       </div>
       <div class="form-row">
         <label>⭐ 預設站牌</label>
+        <p class="fav-note">九宮格正中央是回家，這 8 個站排在其餘格子。</p>
         <div id="setFavList"></div>
       </div>
       <div class="form-row">
@@ -1117,6 +1164,7 @@ const S = {
   favNames:[],
   home:{name:'', icon:'home'},
   favs:[],
+  favExtra:null,
   voiceLegKey:null,
   stopPoll:null,
   originName:'',
@@ -3160,6 +3208,10 @@ function openSettings(){
   maskCredInput('cfgSecret', 'tdx_sec');
   updateCacheStatus();
   renderSetStops();
+  if (S.favExtra && S.favExtra.name && !sessionStorage.getItem('fav_extra_noted')) {
+    sessionStorage.setItem('fav_extra_noted', '1');
+    toast('第 9 個預設站「' + S.favExtra.name + '」九宮格放不下，已留在設定裡', 6000);
+  }
   if (IS_IOS) {
     // Hide notification section on iOS — not supported
     const nb=document.getElementById('notifBanner');
@@ -3238,7 +3290,16 @@ function iconBadge(id, size) {
 function knownIcon(id, fallback) {
   return ICON_MAP[id] && id !== 'pin' ? id : (fallback || '');
 }
+const FAV_N = 8;
 function blankFav() { return { name: '', icon: '' }; }
+function takeFavSlots(list) {
+  const slots = (Array.isArray(list) ? list : []).map(normSlot);
+  const kept = Array.from({ length: FAV_N }, (_, i) => slots[i] || blankFav());
+  const overflow = slots.slice(FAV_N).filter(s => s.name);
+  const hole = kept.findIndex(s => !s.name);
+  if (hole >= 0 && overflow.length) kept[hole] = overflow.shift();
+  return { favs: kept, extra: overflow[0] || null };
+}
 function normSlot(raw) {
   if (!raw) return blankFav();
   if (typeof raw === 'string') return { name: raw.trim(), icon: '' };
@@ -3304,10 +3365,16 @@ function loadStopPrefs() {
       favs = Array.isArray(old) ? old.map(x => (x && x.name) ? x.name : '') : [];
     } catch (e) { favs = []; }
   }
-  S.favs = Array.from({ length: 9 }, (_, i) => normSlot(favs[i]));
+  let storedExtra = null;
+  try { storedExtra = JSON.parse(ls('stop_fav_extra') || 'null'); } catch (e) {}
+  const packed = takeFavSlots(Array.isArray(favs) ? favs : []);
+  S.favs = packed.favs;
+  const extra = packed.extra || (storedExtra && storedExtra.name ? normSlot(storedExtra) : null);
+  S.favExtra = extra && extra.name ? extra : null;
   S.homeName = S.home.name;
   S.favNames = S.favs.map(f => f.name);
-  if (!hadHome || !hadFavs) saveStopPrefs();
+  const migrated = Array.isArray(favs) && favs.length > FAV_N;
+  if (!hadHome || !hadFavs || migrated) saveStopPrefs();
 }
 function saveStopPrefs() {
   S.homeName = S.home.name;
@@ -3316,6 +3383,11 @@ function saveStopPrefs() {
   lsSet('stop_favs', JSON.stringify(S.favs.map(f => ({ name: f.name, icon: f.icon || '' }))));
   lsSet('stop_home_name', S.home.name || '');
   lsSet('stop_fav_names', JSON.stringify(S.favNames));
+  if (S.favExtra && S.favExtra.name) {
+    lsSet('stop_fav_extra', JSON.stringify({ name: S.favExtra.name, icon: S.favExtra.icon || '' }));
+  } else {
+    try { localStorage.removeItem('stop_fav_extra'); } catch (e) {}
+  }
 }
 
 function setMode(mode) {
@@ -3430,16 +3502,18 @@ function retryStopCatalog() {
 function renderStopHome() {
   const box = document.getElementById('stopHome');
   const home = S.home || { name: '', icon: 'home' };
-  const favs = (S.favs && S.favs.length === 9) ? S.favs : Array.from({ length: 9 }, (_, i) => (S.favs && S.favs[i]) || blankFav());
+  const favs = Array.from({ length: FAV_N }, (_, i) => (S.favs && S.favs[i]) || blankFav());
   if (box) {
-    const homeCard = home.name
-      ? `<button type="button" class="home-card" onclick="tapHome()"><span class="ht">回家</span><span class="hs">${escHtml(home.name)}</span></button>`
-      : `<button type="button" class="home-card" disabled><span class="ht">回家</span><span class="hs">到設定裡選擇站名</span></button>`;
-    const grid = favs.map((f, i) => f.name
+    const cell = (f, i) => f.name
       ? `<button type="button" class="preset" onclick="tapFav(${i})"><span class="nm">${escHtml(f.name)}</span></button>`
-      : `<button type="button" class="preset empty" disabled></button>`
-    ).join('');
-    box.innerHTML = homeCard + `<div class="fav-grid">${grid}</div>`;
+      : `<button type="button" class="preset empty" disabled></button>`;
+    const homeCell = home.name
+      ? `<button type="button" class="preset home-slot" onclick="tapHome()"><span class="hm">回家</span><span class="nm">${escHtml(home.name)}</span></button>`
+      : `<button type="button" class="preset home-slot" disabled><span class="hm">回家</span><span class="nm">未設定</span></button>`;
+    const grid = favs.slice(0, 4).map((f, i) => cell(f, i)).join('')
+      + homeCell
+      + favs.slice(4).map((f, i) => cell(f, i + 4)).join('');
+    box.innerHTML = `<div class="fav-grid">${grid}</div>`;
     requestAnimationFrame(fitPresetNames);
   }
   const fromBtn = document.getElementById('odFrom');
@@ -3454,17 +3528,19 @@ function renderStopHome() {
   if (q) q.disabled = !(S.originName && S.destName);
 }
 
-function fitPresetNames() {
-  document.querySelectorAll('#stopHome .preset:not(.empty) .nm').forEach(el => {
-    const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 17;
-    let size = Math.round(root * 1.35 * 10) / 10;
+function fitOneName(el, startRem, floorPx) {
+  const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 17;
+  let size = Math.round(root * startRem * 10) / 10;
+  el.style.fontSize = size + 'px';
+  if (!el.clientHeight) return;
+  while (el.scrollHeight > el.clientHeight + 1 && size > floorPx) {
+    size -= 0.5;
     el.style.fontSize = size + 'px';
-    if (!el.clientHeight) return;
-    while (el.scrollHeight > el.clientHeight + 1 && size > 14) {
-      size -= 0.5;
-      el.style.fontSize = size + 'px';
-    }
-  });
+  }
+}
+function fitPresetNames() {
+  document.querySelectorAll('#stopHome .preset:not(.empty):not(.home-slot) .nm').forEach(el => fitOneName(el, 1.35, 14));
+  document.querySelectorAll('#stopHome .preset.home-slot .nm').forEach(el => fitOneName(el, 0.78, 11));
 }
 window.addEventListener('resize', fitPresetNames);
 
@@ -3475,7 +3551,7 @@ function clearStopResults() {
   _saidArrive = false;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   const box = document.getElementById('stopLegs');
-  if (box) box.innerHTML = '';
+  if (box) { box.innerHTML = ''; box.style.paddingBottom = ''; }
 }
 function tapHome() {
   if (!S.home || !S.home.name) return;
@@ -3498,13 +3574,22 @@ function renderSetStops() {
   if (hi) hi.innerHTML = iconBadge((S.home && S.home.icon) || 'home', 36);
   const box = document.getElementById('setFavList');
   if (!box) return;
-  box.innerHTML = (S.favs || []).map((f, i) => `
+  const rows = (S.favs || []).map((f, i) => `
     <div class="set-stop">
       <button type="button" class="ico-btn" onclick="openIconPick(${i})" aria-label="圖示">${iconBadge(f.icon || 'pin', 36)}</button>
       <span>${f.name ? escHtml(f.name) : '未設定'}</span>
       <button type="button" class="btn-sm" onclick="openNamePick(${i})">站名</button>
       <button type="button" class="btn-sm" onclick="clearFavName(${i})">清除</button>
     </div>`).join('');
+  const extra = (S.favExtra && S.favExtra.name)
+    ? `<div class="set-stop"><span>畫面上已放不下：${escHtml(S.favExtra.name)}</span><button type="button" class="btn-sm" onclick="clearFavExtra()">清除</button></div>`
+    : '';
+  box.innerHTML = rows + extra;
+}
+function clearFavExtra() {
+  S.favExtra = null;
+  saveStopPrefs();
+  renderSetStops();
 }
 function clearHomeName() {
   S.home = { name: '', icon: 'home' };
@@ -4054,7 +4139,7 @@ async function queryStops() {
   _saidArrive = false;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   const box = document.getElementById('stopLegs');
-  if (box) box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">查詢中</div>';
+  if (box) { box.style.paddingBottom = ''; box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">查詢中</div>'; }
   const btn = document.getElementById('stopQueryBtn');
   if (btn) btn.disabled = true;
   try {
@@ -4084,6 +4169,7 @@ async function queryStops() {
     S.stopLegs = legs;
     renderStopLegs();
     scheduleStopPoll();
+    if (legs.length) requestAnimationFrame(() => scrollStopResults());
   } catch (e) {
     if (box) box.innerHTML = '';
     toast('❌ ' + e.message);
@@ -4093,6 +4179,20 @@ async function queryStops() {
   }
 }
 
+function scrollStopResults() {
+  const box = document.getElementById('stopLegs');
+  const hdr = document.querySelector('.hdr');
+  if (!box) return;
+  const hdrH = hdr ? hdr.offsetHeight : 0;
+  const first = box.querySelector('.leg') || box;
+  const target = () => first.getBoundingClientRect().top + window.scrollY - hdrH - 6;
+  let top = target();
+  const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+  const deficit = top - maxScroll;
+  if (deficit > 8) box.style.paddingBottom = Math.ceil(deficit + 16) + 'px';
+  top = target();
+  window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+}
 function renderStopLegs() {
   const box = document.getElementById('stopLegs');
   if (!box) return;
