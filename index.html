@@ -353,6 +353,7 @@ body{
   display:block;min-height:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
   color:var(--TX2);font-size:0.78rem;font-weight:700;line-height:26px;
 }
+.leg-second{font-weight:700;}
 .leg-mute{
   width:34px;height:34px;border:none;border-radius:50%;background:#fff;color:#c1121f;
   display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;padding:0;
@@ -481,6 +482,7 @@ input.st-search{
 .c-err{color:var(--ERR);}.c-acc{color:var(--ACC);}.c-suc{color:var(--SUC);}.c-pri{color:var(--P);}
 .ac-detail{font-size:0.88rem;margin-top:3px;}
 .ac-stop{font-size:0.8rem;color:var(--TX2);margin-top:2px;}
+.ac-next{font-size:0.78rem;font-weight:700;color:var(--TX2);margin-top:2px;}
 /* Progress dots */
 .prog{display:flex;align-items:center;margin-top:9px;overflow-x:auto;padding-bottom:2px;}
 .prog-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:0;}
@@ -2291,6 +2293,29 @@ function takeFreshRt(key, buses) {
   return pack.rows;
 }
 
+function pickTwoBuses(rows, fromSeq) {
+  const bestByPlate = new Map();
+  let anon = 0;
+  for (const row of rows) {
+    const diff = fromSeq - Number(row.StopSequence);
+    if (!Number.isFinite(diff) || diff < 0) continue;
+    const plate = (row.PlateNumb || '').trim();
+    const key = plate || `anon${anon++}`;
+    const prev = bestByPlate.get(key);
+    if (!prev || diff < prev.diff) bestByPlate.set(key, { diff, row });
+  }
+  const ranked = [...bestByPlate.values()].sort((a, b) => a.diff - b.diff);
+  return { nearest: ranked[0] || null, second: ranked[1] || null };
+}
+function secondAwayText(away, secondAway) {
+  if (secondAway == null || away == null) return '';
+  if (secondAway === away) return '第二班同站';
+  return `第二班 ${secondAway} 站`;
+}
+function secondBusHtml(r) {
+  const text = secondAwayText(r.away, r.secondAway);
+  return text ? `<div class="ac-next">${text}</div>` : '';
+}
 function absorbRealtime(bus, rt, alertStops, results, tracker) {
   const key = bus.tdxName + '_' + bus.dir;
   if (!bus.nearSeq && S.lat) calcNearest(bus);
@@ -2298,11 +2323,10 @@ function absorbRealtime(bus, rt, alertStops, results, tracker) {
   if (!userSeq) { results.push({bus, status:'locating'}); return; }
 
   const onRoute = rt.filter(r => routeRowMatches(r, bus) && r.Direction === bus.dir && r.BusStatus <= 2);
-  let closest = null, minD = Infinity;
-  for (const b of onRoute) {
-    const diff = userSeq - b.StopSequence;
-    if (diff >= 0 && diff < minD) { minD = diff; closest = b; }
-  }
+  const picked = pickTwoBuses(onRoute, userSeq);
+  const closest = picked.nearest ? picked.nearest.row : null;
+  const minD = picked.nearest ? picked.nearest.diff : Infinity;
+  const secondAway = picked.second ? picked.second.diff : null;
 
   if (!closest && !S.arrived.has(key)) {
     const busAhead = onRoute.find(b => b.StopSequence > userSeq);
@@ -2325,14 +2349,14 @@ function absorbRealtime(bus, rt, alertStops, results, tracker) {
         if (isNew) announceArrived(bus, stopName(bus, userSeq));
         startBoardingCheck(bus, key, userSeq);
       }
-      results.push({bus, away:0, curStop, status:'arrived'});
+      results.push({bus, away:0, curStop, secondAway, status:'arrived'});
     } else if (away <= alertStops) {
       S.lastAlert[key] = {away, lastSeq:curSeq};
       if (isNew) announceApproach(bus, away, curStop);
-      results.push({bus, away, curStop, status:away <= 2 ? 'close' : 'near'});
+      results.push({bus, away, curStop, secondAway, status:away <= 2 ? 'close' : 'near'});
     } else {
       S.lastAlert[key] = {away, lastSeq:curSeq};
-      results.push({bus, away, curStop, status:'normal'});
+      results.push({bus, away, curStop, secondAway, status:'normal'});
     }
   } else {
     results.push({bus, mins:null, status:'waiting'});
@@ -2447,12 +2471,14 @@ function renderAlerts(results) {
       <div class="ac arrived">
         <div class="ac-bus c-suc">✅ ${nm}（${dl}）</div>
         <div class="ac-detail">🎉 已抵達您的站牌，此路線監控已自動停止</div>
+        ${secondBusHtml(r)}
       </div>`;
     if (r.status==='close') return `
       <div class="ac close">
         <div class="ac-bus c-err">🔔 ${nm}（${dl}）</div>
         <div class="ac-detail">⚠️ 距您還有 <strong>${r.away} 站</strong>，請準備！</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
+        ${secondBusHtml(r)}
         ${dots(r.away)}
       </div>`;
     if (r.status==='near') return `
@@ -2460,6 +2486,7 @@ function renderAlerts(results) {
         <div class="ac-bus c-acc">🚌 ${nm}（${dl}）</div>
         <div class="ac-detail">距您還有 <strong>${r.away} 站</strong></div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
+        ${secondBusHtml(r)}
         ${dots(r.away)}
       </div>`;
     if (r.status==='normal') return `
@@ -2467,6 +2494,7 @@ function renderAlerts(results) {
         <div class="ac-bus c-pri">🚌 ${nm}（${dl}）</div>
         <div class="ac-detail">距您還有 ${r.away} 站</div>
         <div class="ac-stop">📍 目前位置：${r.curStop}</div>
+        ${secondBusHtml(r)}
       </div>`;
     if (r.status==='waiting') return `
       <div class="ac">
@@ -4015,17 +4043,16 @@ async function decorateLegs(legs) {
     for (const leg of list) {
       const mine = rows.filter(r => rowMatchesLeg(r, leg));
       const approaching = mine.filter(r => Number(r.BusStatus) <= 2);
-      let best = null, minD = Infinity;
-      for (const b of approaching) {
-        const diff = leg.fromSeq - Number(b.StopSequence);
-        if (diff >= 0 && diff < minD) { minD = diff; best = b; }
-      }
-      if (best) {
+      const picked = pickTwoBuses(approaching, leg.fromSeq);
+      if (picked.nearest) {
+        const best = picked.nearest.row;
+        const minD = picked.nearest.diff;
         leg.away = minD;
         leg.curStop = ((best.StopName?.Zh_tw) || '').trim();
         leg.curSeq = best.StopSequence;
         // EstimateTime 是到這筆資料所在站的秒數，只有公車就在起站才拿來當到站時間。
         leg.etaSec = (minD === 0 && Number(best.EstimateTime) > 0) ? Number(best.EstimateTime) : null;
+        leg.secondAway = picked.second ? picked.second.diff : null;
         leg.prevStop = '';
         leg.prevPast = false;
         continue;
@@ -4035,6 +4062,7 @@ async function decorateLegs(legs) {
       leg.curStop = '';
       leg.curSeq = null;
       leg.etaSec = null;
+      leg.secondAway = null;
       let prev = null;
       for (const b of mine) {
         const st = Number(b.BusStatus);
@@ -4079,12 +4107,17 @@ function legStatus(leg) {
     if (leg.prevPast) return `尚未發車 · 前班已過訖站，現在在${stop}`;
     return `尚未發車 · 前班在${stop}`;
   }
+  let text = where;
   if (leg.away === 0 && leg.etaSec) {
     const phrase = leg.etaSec < 60 ? '1 分鐘內到起站' : `約 ${Math.max(1, Math.round(leg.etaSec / 60))} 分鐘到起站`;
-    return where ? phrase + ' · ' + where : phrase;
+    text = where ? phrase + ' · ' + where : phrase;
+  } else if (leg.away === 0) {
+    text = where ? '已到起站 · ' + where : '已到起站';
   }
-  if (leg.away === 0) return where ? '已到起站 · ' + where : '已到起站';
-  return where;
+  const extra = secondAwayText(leg.away, leg.secondAway);
+  if (!extra) return text;
+  const html = `<span class="leg-second">${extra}</span>`;
+  return text ? `${text} · ${html}` : html;
 }
 function noteVoice() {
   const leg = (S.stopLegs || []).find(l => legKey(l) === S.voiceLegKey);
