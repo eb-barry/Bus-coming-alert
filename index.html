@@ -52,14 +52,14 @@ body{
   background:rgba(12,92,58,0.88);color:#fff;
 }
 .hdr-gear{
-  position:absolute;top:10px;right:10px;
-  width:44px;height:44px;border-radius:50%;border:none;
-  background:rgba(255,255,255,0.94);color:#1a56a0;
+  position:absolute;top:2px;right:2px;
+  width:56px;height:56px;padding:0;border:none;border-radius:0;
+  background:transparent;color:#fff;
   display:flex;align-items:center;justify-content:center;
   cursor:pointer;touch-action:manipulation;
-  box-shadow:0 2px 8px rgba(0,0,0,0.18);
+  filter:drop-shadow(0 1px 1px rgba(8,40,80,0.45));
 }
-.hdr-gear:active{transform:scale(0.96);}
+.hdr-gear:active{transform:scale(0.94);background:transparent;}
 .gps-pill{
   display:flex;align-items:center;gap:5px;
   border-radius:999px;padding:4px 10px;font-size:0.72rem;font-weight:800;cursor:default;
@@ -300,32 +300,34 @@ body{
 }
 .ico svg{display:block;}
 .od-btn{display:flex;align-items:center;gap:8px;padding:12px;text-align:left;font-weight:800;}
+#stopLegs{
+  margin:10px 14px 16px;padding:12px;border-radius:22px;background:#d6eefc;
+}
+#stopLegs:empty{display:none;}
 .leg{
   position:relative;overflow:hidden;
-  width:100%;display:grid;grid-template-rows:2fr 1fr;height:78px;
-  margin-top:8px;padding:4px 12px;border-radius:16px;
-  border:1px solid rgba(255,255,255,0.75);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.08) 48%, rgba(20,80,150,0.1) 100%),
-    linear-gradient(165deg, #e7f3ff 0%, #c5e2fb 54%, #9cccfa 100%);
+  width:100%;display:grid;grid-template-rows:2fr 1fr;height:90px;
+  margin-top:8px;padding:6px 12px 14px;border:none;border-radius:18px;
+  background:linear-gradient(180deg, #f3f5f7 0%, #e4e7eb 58%, #cfd3d8 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.95),
-    inset 0 -8px 12px rgba(20,70,140,0.1),
-    0 4px 10px rgba(26,86,160,0.12);
+    inset 0 1px 0 rgba(255,255,255,0.96),
+    inset 0 -8px 0 #b4bac2,
+    0 6px 8px rgba(48,56,64,0.24);
   font-family:inherit;cursor:pointer;text-align:left;
   transition:transform .12s ease, box-shadow .12s ease;
 }
+.leg:first-child{margin-top:0;}
 .leg::before{
-  content:"";position:absolute;left:8%;right:8%;top:3px;height:40%;z-index:0;
-  border-radius:40%;pointer-events:none;
-  background:linear-gradient(180deg, rgba(255,255,255,0.78), rgba(255,255,255,0));
+  content:"";position:absolute;left:6%;right:6%;top:10%;bottom:22%;z-index:0;
+  border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 50% 42%, rgba(72,80,90,0.13), rgba(72,80,90,0.04) 56%, rgba(72,80,90,0) 74%);
 }
 .leg:active{
   transform:translateY(6px);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.7),
-    inset 0 4px 8px rgba(20,70,140,0.12),
-    0 2px 5px rgba(26,86,160,0.12);
+    inset 0 1px 0 rgba(255,255,255,0.72),
+    inset 0 -3px 0 #b4bac2,
+    0 2px 3px rgba(48,56,64,0.18);
 }
 .leg.on{outline:2px solid #1a73e8;}
 .leg-top,.leg-sub{position:relative;z-index:1;}
@@ -671,7 +673,7 @@ input:focus,select:focus{border-color:var(--P);}
     <span id="gpsLbl">定位中</span>
   </div>
   <button type="button" class="hdr-gear" onclick="openSettings()" aria-label="設定">
-    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+    <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true">
       <path fill="currentColor" d="M19.4 13a7.8 7.8 0 0 0 .1-1 7.8 7.8 0 0 0-.1-1l2-1.6a.5.5 0 0 0 .1-.6l-1.9-3.3a.5.5 0 0 0-.6-.2l-2.4 1a7.4 7.4 0 0 0-1.7-1l-.4-2.5a.5.5 0 0 0-.5-.4h-3.8a.5.5 0 0 0-.5.4L9.3 4.6a7.4 7.4 0 0 0-1.7 1l-2.4-1a.5.5 0 0 0-.6.2L2.7 8.1a.5.5 0 0 0 .1.6L4.8 10.3a7.8 7.8 0 0 0 0 2L2.8 13.9a.5.5 0 0 0-.1.6l1.9 3.3a.5.5 0 0 0 .6.2l2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5a.5.5 0 0 0 .5.4h3.8a.5.5 0 0 0 .5-.4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1a.5.5 0 0 0 .6-.2l1.9-3.3a.5.5 0 0 0-.1-.6L19.4 13zM12 15.5A3.5 3.5 0 1 1 15.5 12 3.5 3.5 0 0 1 12 15.5z"/>
     </svg>
   </button>
@@ -797,7 +799,7 @@ input:focus,select:focus{border-color:var(--P);}
     </button>
   </div>
   <button type="button" id="stopPause" class="stop-pause" onclick="resumeStopUpdates()">已暫停更新，點一下可繼續</button>
-  <div id="stopLegs" style="padding:4px 14px 12px"></div>
+  <div id="stopLegs"></div>
 </div>
 
 <!-- Monitor section -->
