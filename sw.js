@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v22';  // stop following one bus, then pause when idle or hidden
+const CACHE = 'bus-alert-v23';  // silver keycaps for stop presets and query
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',
