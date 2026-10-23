@@ -304,6 +304,12 @@ body{
   margin:10px 14px 16px;padding:12px;border-radius:22px;background:#d6eefc;
 }
 #stopLegs:empty{display:none;}
+.leg-hint{
+  position:sticky;top:var(--hdr-h, 0px);z-index:40;
+  margin:-12px -12px 8px;padding:10px 12px;
+  background:#d6eefc;color:var(--TX2);
+  font-size:0.95rem;font-weight:700;text-align:center;line-height:1.35;
+}
 .leg{
   position:relative;overflow:hidden;
   width:100%;display:grid;grid-template-rows:2fr 1fr;height:90px;
@@ -1195,6 +1201,8 @@ const S = {
 document.addEventListener('DOMContentLoaded', () => {
   loadPrefs();
   loadStopPrefs();
+  syncHdrHeight();
+  document.querySelector('.hdr-art')?.addEventListener('load', syncHdrHeight);
   renderFavList();
   renderStopHome();
   checkPWA();
@@ -3615,6 +3623,7 @@ function fitPresetNames() {
   document.querySelectorAll('#stopHome .preset.home-slot .nm').forEach(el => fitOneName(el, 0.78, 11));
 }
 window.addEventListener('resize', fitPresetNames);
+window.addEventListener('resize', syncHdrHeight);
 
 function clearStopResults() {
   S.stopLegs = null;
@@ -4210,6 +4219,23 @@ function rowMatchesLeg(row, leg) {
   if (sub && leg.label && sub !== leg.label) return false;
   return true;
 }
+function sortStopLegs(legs) {
+  const order = new Map(legs.map((leg, i) => [leg, i]));
+  const rank = leg => {
+    if (leg.away != null) return [0, leg.away];
+    if (!leg.rtKnown) return [1, 0];
+    if (leg.prevStop) return [2, leg.prevPast ? 0 : 1];
+    return [3, 0];
+  };
+  legs.sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra[0] !== rb[0]) return ra[0] - rb[0];
+    if (ra[1] !== rb[1]) return ra[1] - rb[1];
+    return order.get(a) - order.get(b);
+  });
+  return legs;
+}
 function legAwayText(leg) {
   if (leg.away == null) return '';
   if (leg.away === 0) return '到站';
@@ -4401,7 +4427,7 @@ async function refreshStopLegs(opts = {}) {
   try {
     await decorateLegs(legsForRefresh(), { wait: false });
     if (consumeTrackPassed()) endFollowPassed();
-    S.stopLegs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
+    sortStopLegs(S.stopLegs);
     noteVoice();
     renderStopLegs();
   } catch (e) {
@@ -4449,7 +4475,7 @@ async function queryStops() {
     if (!merged.length && lastError) throw lastError;
     let legs = merged;
     legs = await decorateLegs(legs, { wait: true });
-    legs.sort((a, b) => (a.away ?? 999) - (b.away ?? 999));
+    sortStopLegs(legs);
     S.stopLegs = legs;
     renderStopLegs();
     scheduleStopPoll();
@@ -4463,12 +4489,17 @@ async function queryStops() {
   }
 }
 
+function syncHdrHeight() {
+  const hdr = document.querySelector('.hdr');
+  if (hdr) document.documentElement.style.setProperty('--hdr-h', hdr.offsetHeight + 'px');
+}
 function scrollStopResults() {
   const box = document.getElementById('stopLegs');
   const hdr = document.querySelector('.hdr');
   if (!box) return;
+  syncHdrHeight();
   const hdrH = hdr ? hdr.offsetHeight : 0;
-  const first = box.querySelector('.leg') || box;
+  const first = box.querySelector('.leg-hint') || box.querySelector('.leg') || box;
   const target = () => first.getBoundingClientRect().top + window.scrollY - hdrH - 6;
   let top = target();
   const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
@@ -4489,7 +4520,9 @@ function renderStopLegs() {
     box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">沒有直達路線</div>';
     return;
   }
-  box.innerHTML = legs.map((leg, i) => {
+  syncHdrHeight();
+  const hint = '<div class="leg-hint">點擊路線, 進行語音追蹤</div>';
+  box.innerHTML = hint + legs.map((leg, i) => {
     const on = legKey(leg) === S.voiceLegKey;
     const dir = leg.head || leg.toName;
     const away = legAwayText(leg);
