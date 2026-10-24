@@ -162,7 +162,8 @@ body{
 .cmp-actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
 .cmp-note{font-size:0.75rem;color:var(--TX2);margin-top:6px;line-height:1.5;}
 
-.mode-tabs{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px 14px 8px;}
+.mode-tabs{display:none;}
+.route-only{display:none;}
 .mode-tab{
   position:relative;border:none;border-radius:16px;min-height:52px;padding:10px 8px;
   font-family:inherit;font-size:1.05rem;font-weight:800;
@@ -665,12 +666,6 @@ input:focus,select:focus{border-color:var(--P);}
   <input type="checkbox" id="hapticSwitch" switch>
 </label>
 
-<div class="pwa-b" id="pwaBanner">
-  <span style="font-size:1.2rem">📲</span>
-  <span style="flex:1;line-height:1.5">加入主畫面可獲得最佳背景提醒效果！<br>請點選瀏覽器「加入主畫面」</span>
-  <button class="pwa-bc" onclick="document.getElementById('pwaBanner').classList.remove('show')">✕</button>
-</div>
-
 <!-- Header -->
 <header class="hdr">
   <img class="hdr-art" src="./header-banner.png" alt="公車快到了，雙北公車及公路客運即時到站提醒">
@@ -710,7 +705,7 @@ input:focus,select:focus{border-color:var(--P);}
   </button>
 </div>
 
-<div id="routeMode">
+<div id="routeMode" style="display:none">
 <!-- Bus input section -->
 <div class="sec">
   <div class="sec-hd">🚌 加入公車</div>
@@ -792,7 +787,7 @@ input:focus,select:focus{border-color:var(--P);}
 </div>
 </div>
 
-<div id="stopMode" style="display:none">
+<div id="stopMode">
   <div id="stopHome" style="padding:8px 14px 0"></div>
   <div class="od-block" style="padding:0 14px">
     <div class="od-fields">
@@ -972,7 +967,7 @@ input:focus,select:focus{border-color:var(--P);}
         <p class="fav-note">九宮格正中央是回家，這 8 個站排在其餘格子。</p>
         <div id="setFavList"></div>
       </div>
-      <div class="form-row">
+      <div class="form-row route-only">
         <label>🚌 常用路線</label>
         <button type="button" class="btn-sm" onclick="openFavs()">查看</button>
       </div>
@@ -1019,7 +1014,7 @@ input:focus,select:focus{border-color:var(--P);}
 
       <div class="divider"></div>
 
-      <div class="form-row">
+      <div class="form-row route-only">
         <label>📳 鍵盤震動回饋</label>
         <div style="display:flex;align-items:center;gap:14px">
           <label class="toggle-switch">
@@ -1034,7 +1029,7 @@ input:focus,select:focus{border-color:var(--P);}
         </div>
       </div>
 
-      <div class="divider"></div>
+      <div class="divider route-only"></div>
 
       <div class="form-row">
         <label>🔊 語音測試（iOS 請先按此解鎖音訊）</label>
@@ -1062,9 +1057,9 @@ input:focus,select:focus{border-color:var(--P);}
         <strong>📱 背景提醒設定步驟（重要）</strong><br>
       </div>
 
-      <div class="divider"></div>
+      <div class="divider route-only"></div>
 
-      <div style="font-size:0.8rem;color:var(--TX2);line-height:1.8">
+      <div class="route-only" style="font-size:0.8rem;color:var(--TX2);line-height:1.8">
         <strong>API 呼叫頻率</strong><br>
         • 同一市區多條路線合併成 1 次即時位置呼叫<br>
         • 無公車在範圍內：每 60 秒更新<br>
@@ -1204,8 +1199,7 @@ document.addEventListener('DOMContentLoaded', () => {
   syncHdrHeight();
   document.querySelector('.hdr-art')?.addEventListener('load', syncHdrHeight);
   renderFavList();
-  renderStopHome();
-  checkPWA();
+  setMode('stop');
   updateSaveBtn();
   if ('serviceWorker' in navigator) {
     let hadController = !!navigator.serviceWorker.controller;
@@ -3315,12 +3309,6 @@ function toast(msg,dur){
   const t=document.createElement('div');
   t.className='toast'; t.textContent=msg; c.appendChild(t);
   setTimeout(()=>t.remove(),dur||3500);
-}
-
-function checkPWA(){
-  const sa=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
-  const ios=/iPad|iPhone|iPod/.test(navigator.userAgent);
-  if(!sa&&ios) document.getElementById('pwaBanner').classList.add('show');
 }
 
 /* ══════════════════════════════════════════
