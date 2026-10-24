@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v26';  // open on the stop page, route tab hidden
+const CACHE = 'bus-alert-v27';  // sky status bar and navy settings gear
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',
