@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v27';  // sky status bar and navy settings gear
+const CACHE = 'bus-alert-v28';  // stop key underglow and tap haptic
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',

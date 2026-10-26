@@ -253,18 +253,44 @@ body{
     inset 0 1px 0 rgba(255,255,255,0.96),
     inset 0 -8px 0 #b4bac2,
     0 6px 8px rgba(48,56,64,0.24);
-  transition:transform .12s ease, box-shadow .12s ease;
+  transition:transform .12s ease, box-shadow .18s ease;
 }
 .preset::before{
   content:"";position:absolute;left:14%;right:14%;top:16%;bottom:20%;z-index:0;
   border-radius:50%;pointer-events:none;
   background:radial-gradient(circle at 50% 42%, rgba(72,80,90,0.14), rgba(72,80,90,0.04) 56%, rgba(72,80,90,0) 74%);
 }
+.preset::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:46%;z-index:0;
+  border-radius:0 0 16px 16px;pointer-events:none;opacity:0;
+  transition:opacity .18s ease;
+  background:
+    linear-gradient(to top, rgba(156,208,246,0.82) 0%, rgba(190,224,252,0.28) 46%, rgba(255,255,255,0) 100%),
+    linear-gradient(to right, rgba(176,220,255,0.7) 0%, rgba(176,220,255,0.16) 30%, rgba(176,220,255,0) 58%);
+}
+.preset.lit{
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.96),
+    inset 5px 0 12px -6px rgba(150,205,245,0.9),
+    inset 0 -8px 0 #c5dff3,
+    -4px 8px 14px rgba(90,165,220,0.38),
+    0 6px 8px rgba(48,56,64,0.22);
+}
+.preset.lit::after{opacity:1;}
 .preset:not(:disabled):active{
   transform:translateY(6px);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,0.72),
     inset 0 -3px 0 #b4bac2,
+    0 2px 3px rgba(48,56,64,0.18);
+}
+.preset.lit:not(:disabled):active{
+  transform:translateY(6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.72),
+    inset 4px 0 10px -6px rgba(150,205,245,0.75),
+    inset 0 -3px 0 #c5dff3,
+    -2px 4px 10px rgba(90,165,220,0.28),
     0 2px 3px rgba(48,56,64,0.18);
 }
 .preset .nm{
@@ -1173,6 +1199,7 @@ const S = {
   stopPoll:null,
   originName:'',
   destName:'',
+  litKey:null,
   awaitOriginGps:false,
   namePick:null,
   stationHits:[],
@@ -2976,6 +3003,10 @@ function iosHaptic() {
   } catch(e) {}
 }
 
+function keyHaptic() {
+  if (IS_IOS) { iosHaptic(); return; }
+  try { navigator.vibrate?.(20); } catch (e) {}
+}
 function kbdHaptic() {
   if (ls('kbd_vibrate') !== '1') return;
   if (IS_IOS) {
@@ -3566,16 +3597,26 @@ function retryStopCatalog() {
   }).catch(e => showCatalogError(e.message));
 }
 
+function syncLitKey() {
+  const dest = S.destName || '';
+  if (!dest) { S.litKey = null; return; }
+  if (S.litKey === 'home' && S.home && S.home.name === dest) return;
+  if (typeof S.litKey === 'number' && S.favs[S.litKey] && S.favs[S.litKey].name === dest) return;
+  if (S.home && S.home.name === dest) { S.litKey = 'home'; return; }
+  const i = (S.favs || []).findIndex(f => f && f.name === dest);
+  S.litKey = i >= 0 ? i : null;
+}
 function renderStopHome() {
+  syncLitKey();
   const box = document.getElementById('stopHome');
   const home = S.home || { name: '', icon: 'home' };
   const favs = Array.from({ length: FAV_N }, (_, i) => (S.favs && S.favs[i]) || blankFav());
   if (box) {
     const cell = (f, i) => f.name
-      ? `<button type="button" class="preset" onclick="tapFav(${i})"><span class="nm">${escHtml(f.name)}</span></button>`
+      ? `<button type="button" class="preset${S.litKey === i ? ' lit' : ''}" onclick="tapFav(${i})"><span class="nm">${escHtml(f.name)}</span></button>`
       : `<button type="button" class="preset empty" disabled></button>`;
     const homeCell = home.name
-      ? `<button type="button" class="preset home-slot" onclick="tapHome()"><span class="hm">回家</span><span class="nm">${escHtml(home.name)}</span></button>`
+      ? `<button type="button" class="preset home-slot${S.litKey === 'home' ? ' lit' : ''}" onclick="tapHome()"><span class="hm">回家</span><span class="nm">${escHtml(home.name)}</span></button>`
       : `<button type="button" class="preset home-slot" disabled><span class="hm">回家</span><span class="nm">未設定</span></button>`;
     const grid = favs.slice(0, 4).map((f, i) => cell(f, i)).join('')
       + homeCell
@@ -3625,14 +3666,18 @@ function clearStopResults() {
 }
 function tapHome() {
   if (!S.home || !S.home.name) return;
+  S.litKey = 'home';
   S.destName = S.home.name;
+  keyHaptic();
   clearStopResults();
   renderStopHome();
 }
 function tapFav(i) {
   const name = S.favs[i] && S.favs[i].name;
   if (!name) return;
+  S.litKey = i;
   S.destName = name;
+  keyHaptic();
   clearStopResults();
   renderStopHome();
 }
