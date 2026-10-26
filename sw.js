@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v28';  // stop key underglow and tap haptic
+const CACHE = 'bus-alert-v29';  // preset key neon outer glow
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',
