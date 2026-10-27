@@ -3660,6 +3660,7 @@ function clearStopResults() {
   releaseStopWatch();
   _saidSeq = null;
   _saidArrive = false;
+  _awaitingDeparture = false;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   const box = document.getElementById('stopLegs');
   if (box) { box.innerHTML = ''; box.style.paddingBottom = ''; }
@@ -4240,6 +4241,36 @@ let _stopBusy = false;
 let _stopRefresh = false;
 let _saidSeq = null;
 let _saidArrive = false;
+// 這次查詢的每一條都尚未發車時才為真。監測中第一台發出的車會自動語音追蹤。
+let _awaitingDeparture = false;
+
+function legNotDeparted(leg) {
+  return !!(leg && leg.rtKnown && leg.away == null);
+}
+function rememberDepartureWatch() {
+  if (S.voiceLegKey || S.stopHold === 'boarded') {
+    _awaitingDeparture = false;
+    return;
+  }
+  const legs = S.stopLegs || [];
+  _awaitingDeparture = legs.length > 0 && legs.every(legNotDeparted);
+}
+function firstDepartedIndex() {
+  return (S.stopLegs || []).findIndex(leg => leg && leg.rtKnown && leg.away != null);
+}
+function engageLeg(i) {
+  const leg = (S.stopLegs || [])[i];
+  if (!leg) return false;
+  unlockAudio();
+  S.voiceLegKey = legKey(leg);
+  beginStopTrack(leg);
+  _saidSeq = null;
+  _saidArrive = false;
+  _awaitingDeparture = false;
+  noteVoice();
+  renderStopLegs();
+  return true;
+}
 
 function legKey(leg) {
   return `${leg.label}|${leg.dir}|${leg.city}`;
@@ -4456,12 +4487,18 @@ async function refreshStopLegs(opts = {}) {
     return;
   }
   _stopRefresh = true;
+  const watchDeparture = _awaitingDeparture && !S.voiceLegKey;
   try {
     await decorateLegs(legsForRefresh(), { wait: false });
     if (consumeTrackPassed()) endFollowPassed();
     sortStopLegs(S.stopLegs);
-    noteVoice();
-    renderStopLegs();
+    const autoIndex = watchDeparture ? firstDepartedIndex() : -1;
+    if (autoIndex >= 0) engageLeg(autoIndex);
+    else {
+      rememberDepartureWatch();
+      noteVoice();
+      renderStopLegs();
+    }
   } catch (e) {
     S.stopBackoffUntil = Date.now() + 15000;
   }
@@ -4473,12 +4510,14 @@ async function queryStops() {
   if (_stopBusy) return;
   if (!S.originName || !S.destName) return;
   if (S.originName === S.destName) { toast('起站與訖站相同'); return; }
+  unlockAudio();
   _stopBusy = true;
   S.voiceLegKey = null;
   S.stopHold = '';
   releaseStopWatch();
   _saidSeq = null;
   _saidArrive = false;
+  _awaitingDeparture = false;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }
   const box = document.getElementById('stopLegs');
   if (box) { box.style.paddingBottom = ''; box.innerHTML = '<div class="meta" style="margin-top:12px;color:var(--TX2)">查詢中</div>'; }
@@ -4509,6 +4548,7 @@ async function queryStops() {
     legs = await decorateLegs(legs, { wait: true });
     sortStopLegs(legs);
     S.stopLegs = legs;
+    rememberDepartureWatch();
     renderStopLegs();
     scheduleStopPoll();
     if (legs.length) requestAnimationFrame(() => scrollStopResults());
@@ -4553,7 +4593,9 @@ function renderStopLegs() {
     return;
   }
   syncHdrHeight();
-  const hint = '<div class="leg-hint">點擊路線, 進行語音追蹤</div>';
+  const hint = _awaitingDeparture
+    ? '<div class="leg-hint">全部尚未發車，有車發出後會自動語音追蹤</div>'
+    : '<div class="leg-hint">點擊路線, 進行語音追蹤</div>';
   box.innerHTML = hint + legs.map((leg, i) => {
     const on = legKey(leg) === S.voiceLegKey;
     const dir = leg.head || leg.toName;
@@ -4580,6 +4622,7 @@ function muteStopVoice() {
   window.speechSynthesis?.cancel();
   _sQueue.length = 0;
   _sRunning = false;
+  rememberDepartureWatch();
   renderStopLegs();
   scheduleStopPoll();
 }
@@ -4606,15 +4649,7 @@ function legToBus(leg) {
 }
 
 function monitorLeg(i) {
-  const leg = (S.stopLegs || [])[i];
-  if (!leg) return;
-  unlockAudio();
-  S.voiceLegKey = legKey(leg);
-  beginStopTrack(leg);
-  _saidSeq = null;
-  _saidArrive = false;
-  noteVoice();
-  renderStopLegs();
+  if (!engageLeg(i)) return;
   const picked = selectedLeg();
   const close = picked && picked.rtKnown && picked.away != null && picked.away <= 2;
   if (S.stopPoll) { clearTimeout(S.stopPoll); S.stopPoll = null; }

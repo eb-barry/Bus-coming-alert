@@ -1,6 +1,6 @@
 // Service Worker - 公車快到了 v4
 // Uses reg.showNotification() — reliable in foreground AND background on iOS PWA + Android
-const CACHE = 'bus-alert-v29';  // preset key neon outer glow
+const CACHE = 'bus-alert-v30';  // auto voice when a waiting route departs
 const STATIC = [
   './', './index.html', './manifest.json', './sw.js',
   './header-banner.png',
